@@ -91,7 +91,7 @@ export function Sidebar() {
           <p className="text-[12px] font-semibold text-ink-800 truncate">
             {user?.name} <span className="font-normal text-ink-500">{user?.role}</span>
           </p>
-          <p className="text-[10px] text-ink-500 truncate">{user?.org}</p>
+          <p className="text-[10px] text-ink-500 truncate">{user?.email}</p>
         </div>
         <button
           onClick={logout}
