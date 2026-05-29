@@ -3,7 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Icon } from '@/components/common/Icon'
 import { useToast } from '@/hooks/useToast'
 import { cn } from '@/lib/utils'
-import type { Utterance, Metric, SoapNote, SessionStatus } from '@/api/sessions'
+import type { SessionStatus } from '@/api/sessions'
+
+// UI 전용 타입 — 나중에 BE 연동 시 transcript.ts / soapNotes.ts 타입으로 교체
+type Utterance = { t: string; speaker: 'CHILD' | 'THERAPIST' | 'UNKNOWN'; text: string; edited?: boolean }
+type Metric    = { label: string; desc: string; value: string; delta: string; dir: 'up' | 'down'; good: boolean }
+type SoapNote  = { S: string; O: string; A: string; P: string }
 
 type Step = 1 | 2 | 3 | 4
 

@@ -48,7 +48,8 @@ export default function SignupPage() {
   const strengthLabel = ['', '약함', '보통', '강함'][strength]
   const strengthColor = ['#E2E6E4', '#EF4444', '#F59E0B', '#15803D'][strength]
 
-  const onSubmit = ({ confirm: _c, ...rest }: FormValues) => signup.mutate(rest)
+  const onSubmit = ({ confirm: _c, role, ...rest }: FormValues) =>
+    signup.mutate({ ...rest, role: role.toUpperCase() as 'THERAPIST' | 'ADMIN' })
 
   const fieldClass = (hasErr?: boolean) => cn(
     'w-full h-[46px] pl-10 pr-4 rounded-[10px] text-[13.5px] outline-none transition-all bg-brand-25 border font-sans',

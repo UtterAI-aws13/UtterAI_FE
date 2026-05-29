@@ -2,74 +2,57 @@ import { apiClient } from './client'
 
 export type SessionStatus =
   | 'CREATED'
+  | 'AUDIO_UPLOADING'
   | 'AUDIO_UPLOADED'
+  | 'ANALYSIS_REQUESTED'
   | 'ANALYSIS_PROCESSING'
   | 'ANALYSIS_COMPLETED'
   | 'REPORT_READY'
   | 'FAILED'
+  | 'DELETED'
 
 export interface Session {
-  id: number
-  child: string
-  childId: number
-  age: string
-  date: string
-  time: string
-  kind: '개별' | '그룹'
+  id: string
+  child_id: string
+  therapist_id: string
+  session_date: string
+  session_type: string | null
+  memo: string | null
   status: SessionStatus
-  mlu: number | null
+  created_at: string
+  updated_at: string
 }
 
-export interface SessionDetail extends Session {
-  utterances: Utterance[]
-  metrics: Metric[]
-  soap: SoapNote
+export interface CreateSessionPayload {
+  child_id: string
+  session_date: string
+  session_type?: string | null
+  memo?: string | null
 }
 
-export interface Utterance {
-  t: string
-  speaker: 'CHILD' | 'THERAPIST' | 'UNKNOWN'
-  text: string
-  edited?: boolean
-}
-
-export interface Metric {
-  label: string
-  desc: string
-  value: string
-  delta: string
-  dir: 'up' | 'down'
-  good: boolean
-}
-
-export interface SoapNote {
-  S: string
-  O: string
-  A: string
-  P: string
+export interface UpdateSessionPayload {
+  session_date?: string
+  session_type?: string | null
+  memo?: string | null
+  status?: SessionStatus
 }
 
 export const sessionsApi = {
-  list: (params?: { childId?: number; status?: SessionStatus }) =>
-    apiClient.get<Session[]>('/sessions/', { params }),
+  list: (params?: { child_id?: string; status?: SessionStatus }) =>
+    apiClient.get<Session[]>('/sessions', { params }),
 
-  get: (id: number) =>
-    apiClient.get<SessionDetail>(`/sessions/${id}/`),
+  get: (id: string) =>
+    apiClient.get<Session>(`/sessions/${id}`),
 
-  create: (payload: { childId: number; kind: string; date: string; time: string }) =>
-    apiClient.post<Session>('/sessions/', payload),
+  create: (payload: CreateSessionPayload) =>
+    apiClient.post<Session>('/sessions', payload),
 
-  uploadAudio: (id: number, file: File) => {
-    const form = new FormData()
-    form.append('audio', file)
-    return apiClient.post<Session>(`/sessions/${id}/upload/`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-  },
+  update: (id: string, payload: UpdateSessionPayload) =>
+    apiClient.patch<Session>(`/sessions/${id}`, payload),
 
-  startAnalysis: (id: number) =>
-    apiClient.post<Session>(`/sessions/${id}/analyze/`),
+  delete: (id: string) =>
+    apiClient.delete<Session>(`/sessions/${id}`),
 
-  updateTranscript: (id: number, utterances: Utterance[]) =>
-    apiClient.patch<SessionDetail>(`/sessions/${id}/transcript/`, { utterances }),
+  listReports: (sessionId: string) =>
+    apiClient.get(`/sessions/${sessionId}/reports`),
 }

@@ -1,19 +1,31 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Child } from '@/api/children'
 import { Icon } from '@/components/common/Icon'
 import { useToast } from '@/hooks/useToast'
 import { cn } from '@/lib/utils'
 
-const MOCK_CHILDREN: Child[] = [
-  { id: 1, name: '박서윤', dob: '2020.04.15', age: '6세 2개월',  gender: 'F', registered: '2024.10.02', sessions: 24, lastSession: '2026.05.28', primaryGoal: '표현언어 지연' },
-  { id: 2, name: '이하준', dob: '2020.09.20', age: '5세 8개월',  gender: 'M', registered: '2025.01.14', sessions: 18, lastSession: '2026.05.28', primaryGoal: '조음 오류' },
-  { id: 3, name: '최예나', dob: '2021.06.10', age: '4세 11개월', gender: 'F', registered: '2025.03.22', sessions: 12, lastSession: '2026.05.27', primaryGoal: '언어 발달 지연' },
-  { id: 4, name: '정도윤', dob: '2019.04.03', age: '7세 1개월',  gender: 'M', registered: '2024.06.08', sessions: 32, lastSession: '2026.05.27', primaryGoal: '말 유창성' },
-  { id: 5, name: '강하린', dob: '2020.12.18', age: '5세 4개월',  gender: 'F', registered: '2025.02.11', sessions: 16, lastSession: '2026.05.26', primaryGoal: '어휘 확장' },
-  { id: 6, name: '윤시아', dob: '2019.10.05', age: '6세 7개월',  gender: 'F', registered: '2024.08.30', sessions: 28, lastSession: '2026.05.26', primaryGoal: '문장 구성' },
-  { id: 7, name: '한이서', dob: '2021.12.22', age: '4세 5개월',  gender: 'M', registered: '2025.05.04', sessions: 6,  lastSession: '2026.05.25', primaryGoal: '초기 어휘' },
-  { id: 8, name: '서지호', dob: '2020.02.14', age: '6세 3개월',  gender: 'M', registered: '2024.11.19', sessions: 22, lastSession: '2026.05.24', primaryGoal: '화용 언어' },
+// Phase 3에서 BE Child 타입으로 교체 예정
+type ChildRow = {
+  id: string
+  name: string
+  dob: string
+  age: string
+  gender: string
+  registered: string
+  sessions: number
+  lastSession: string
+  primaryGoal: string
+}
+
+const MOCK_CHILDREN: ChildRow[] = [
+  { id: '1', name: '박서윤', dob: '2020.04.15', age: '6세 2개월',  gender: 'F', registered: '2024.10.02', sessions: 24, lastSession: '2026.05.28', primaryGoal: '표현언어 지연' },
+  { id: '2', name: '이하준', dob: '2020.09.20', age: '5세 8개월',  gender: 'M', registered: '2025.01.14', sessions: 18, lastSession: '2026.05.28', primaryGoal: '조음 오류' },
+  { id: '3', name: '최예나', dob: '2021.06.10', age: '4세 11개월', gender: 'F', registered: '2025.03.22', sessions: 12, lastSession: '2026.05.27', primaryGoal: '언어 발달 지연' },
+  { id: '4', name: '정도윤', dob: '2019.04.03', age: '7세 1개월',  gender: 'M', registered: '2024.06.08', sessions: 32, lastSession: '2026.05.27', primaryGoal: '말 유창성' },
+  { id: '5', name: '강하린', dob: '2020.12.18', age: '5세 4개월',  gender: 'F', registered: '2025.02.11', sessions: 16, lastSession: '2026.05.26', primaryGoal: '어휘 확장' },
+  { id: '6', name: '윤시아', dob: '2019.10.05', age: '6세 7개월',  gender: 'F', registered: '2024.08.30', sessions: 28, lastSession: '2026.05.26', primaryGoal: '문장 구성' },
+  { id: '7', name: '한이서', dob: '2021.12.22', age: '4세 5개월',  gender: 'M', registered: '2025.05.04', sessions: 6,  lastSession: '2026.05.25', primaryGoal: '초기 어휘' },
+  { id: '8', name: '서지호', dob: '2020.02.14', age: '6세 3개월',  gender: 'M', registered: '2024.11.19', sessions: 22, lastSession: '2026.05.24', primaryGoal: '화용 언어' },
 ]
 
 const GENDER_LABEL: Record<string, string> = { M: '남아', F: '여아', U: '미입력' }
@@ -48,7 +60,7 @@ export default function ChildrenPage() {
     return true
   })
 
-  const handleDelete = (c: Child, e: React.MouseEvent) => {
+  const handleDelete = (c: ChildRow, e: React.MouseEvent) => {
     e.stopPropagation()
     setChildren((cs) => cs.filter((x) => x.id !== c.id))
     showToast({ title: '아동 정보가 삭제되었습니다', body: `${c.name} 아동 정보가 삭제되었어요.`, kind: 'success' })
