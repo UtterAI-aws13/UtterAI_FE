@@ -1,0 +1,54 @@
+/* Shared base for design-system preview cards */
+@import url('../colors_and_type.css');
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #FFFFFF;
+}
+
+.card {
+  box-sizing: border-box;
+  width: 700px;
+  padding: 24px;
+  background: #fff;
+  font-family: var(--font-sans);
+  color: var(--ink-800);
+}
+
+.card * { box-sizing: border-box; }
+
+.row { display: flex; gap: 12px; align-items: center; }
+.col { display: flex; flex-direction: column; gap: 12px; }
+.grid { display: grid; gap: 12px; }
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+  margin-bottom: 12px;
+}
+
+.swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--font-mono);
+}
+.swatch .chip {
+  width: 100%;
+  aspect-ratio: 1.6 / 1;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 42, 36, 0.06);
+}
+.swatch .name {
+  font-size: 11px;
+  color: var(--ink-800);
+  font-weight: 600;
+}
+.swatch .hex {
+  font-size: 10px;
+  color: var(--ink-500);
+}

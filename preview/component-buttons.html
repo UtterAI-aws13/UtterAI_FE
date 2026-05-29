@@ -1,0 +1,42 @@
+<!-- @dsCard group="Components" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; font-family:var(--font-sans); font-weight:600; font-size:13px; border-radius:999px; padding:9px 18px; border:1px solid transparent; cursor:pointer; transition:all 120ms; }
+  .btn.primary { background:#1A3C34; color:#fff; }
+  .btn.primary:hover { background:#0F2A24; }
+  .btn.secondary { background:#fff; color:#1A3C34; border-color:#1A3C34; }
+  .btn.secondary:hover { background:#ECF5EF; }
+  .btn.ghost { background:transparent; color:#2D6A4F; }
+  .btn.ghost:hover { background:#ECF5EF; }
+  .btn.danger { background:#EF4444; color:#fff; }
+  .btn.danger:hover { background:#B91C1C; }
+  .btn.sm { font-size:12px; padding:6px 12px; }
+  .btn.lg { font-size:14px; padding:11px 22px; }
+  .btn.disabled, .btn:disabled { background:#EEF1EF; color:#9AA3A0; border-color:transparent; cursor:not-allowed; }
+</style></head>
+<body><div class="card">
+  <div class="eyebrow">Buttons</div>
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;gap:10px;align-items:center"><span style="width:80px;font-size:11px;color:#6B7280;font-family:var(--font-mono)">primary</span>
+      <button class="btn primary sm">분석 시작</button>
+      <button class="btn primary">분석 시작</button>
+      <button class="btn primary lg">분석 시작</button>
+      <button class="btn primary" disabled>분석 시작</button>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center"><span style="width:80px;font-size:11px;color:#6B7280;font-family:var(--font-mono)">secondary</span>
+      <button class="btn secondary sm">취소</button>
+      <button class="btn secondary">취소</button>
+      <button class="btn secondary lg">취소</button>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center"><span style="width:80px;font-size:11px;color:#6B7280;font-family:var(--font-mono)">ghost</span>
+      <button class="btn ghost sm">자세히 보기</button>
+      <button class="btn ghost">자세히 보기</button>
+      <button class="btn ghost lg">자세히 보기</button>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center"><span style="width:80px;font-size:11px;color:#6B7280;font-family:var(--font-mono)">danger</span>
+      <button class="btn danger sm">삭제</button>
+      <button class="btn danger">세션 삭제</button>
+      <button class="btn danger lg">영구 삭제</button>
+    </div>
+  </div>
+</div></body></html>

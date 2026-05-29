@@ -1,0 +1,24 @@
+<!-- @dsCard group="Components" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css">
+<style>
+.badge { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:600; font-family:var(--font-sans); line-height:1.4; white-space:nowrap; }
+.badge .dot { width:6px; height:6px; border-radius:999px; }
+</style></head>
+<body><div class="card">
+  <div class="eyebrow">Status Badges — Session / Job</div>
+  <div style="display:flex;flex-wrap:wrap;gap:10px 12px;">
+    <span class="badge" style="background:#EEF1EF;color:#4B5650"><span class="dot" style="background:#9AA3A0"></span>CREATED · 생성됨</span>
+    <span class="badge" style="background:#DBEAFE;color:#1D4ED8"><span class="dot" style="background:#3B82F6"></span>AUDIO_UPLOADED · 업로드 완료</span>
+    <span class="badge" style="background:#FEF3C7;color:#B45309"><span class="dot" style="background:#F59E0B;box-shadow:0 0 0 3px rgba(245,158,11,0.25)"></span>ANALYSIS_PROCESSING · 분석 중</span>
+    <span class="badge" style="background:#DCFCE7;color:#15803D"><span class="dot" style="background:#22C55E"></span>ANALYSIS_COMPLETED · 분석 완료</span>
+    <span class="badge" style="background:#D8ECDF;color:#1A3C34"><span class="dot" style="background:#1A3C34"></span>REPORT_READY · 리포트 준비됨</span>
+    <span class="badge" style="background:#FEE2E2;color:#B91C1C"><span class="dot" style="background:#EF4444"></span>FAILED · 실패</span>
+  </div>
+  <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:10px 12px;">
+    <span class="badge" style="background:#fff;color:#4B5650;border:1px solid #E2E6E4">초안</span>
+    <span class="badge" style="background:#fff;color:#1A3C34;border:1px solid #B7DEC8">서명 대기</span>
+    <span class="badge" style="background:#1A3C34;color:#fff">확정됨</span>
+    <span class="badge" style="background:#ECF5EF;color:#1A3C34">v2.1</span>
+  </div>
+  <div style="margin-top:12px;font-size:11px;color:#6B7280">상태는 항상 <b style="color:#1A1A1A">EN_CONSTANT · 한국어</b> 형식으로 표기. 작업이 활성(진행 중)일 때만 점에 그림자 링.</div>
+</div></body></html>
