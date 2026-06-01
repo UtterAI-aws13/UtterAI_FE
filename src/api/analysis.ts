@@ -30,7 +30,7 @@ export const analysisApi = {
   create: (payload: {
     session_id: string
     audio_file_id: string
-    analysis_template?: string
+    template_id?: string | null
   }) =>
     apiClient.post<AnalysisJob>('/analysis-jobs', payload),
 

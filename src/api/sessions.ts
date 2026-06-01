@@ -1,4 +1,6 @@
 import { apiClient } from './client'
+import type { AnalysisResult } from './analysisResult'
+import type { Report } from './reports'
 
 export type SessionStatus =
   | 'CREATED'
@@ -38,7 +40,7 @@ export interface UpdateSessionPayload {
 }
 
 export const sessionsApi = {
-  list: (params?: { child_id?: string; status?: SessionStatus }) =>
+  list: (params?: { child_id?: string }) =>
     apiClient.get<Session[]>('/sessions', { params }),
 
   get: (id: string) =>
@@ -54,5 +56,8 @@ export const sessionsApi = {
     apiClient.delete<Session>(`/sessions/${id}`),
 
   listReports: (sessionId: string) =>
-    apiClient.get(`/sessions/${sessionId}/reports`),
+    apiClient.get<Report[]>(`/sessions/${sessionId}/reports`),
+
+  getAnalysisResult: (sessionId: string) =>
+    apiClient.get<AnalysisResult>(`/sessions/${sessionId}/analysis-results`),
 }

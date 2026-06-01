@@ -35,4 +35,10 @@ export const authApi = {
 
   logout: () =>
     apiClient.post('/auth/logout'),
+
+  updateProfile: (payload: { name: string }) =>
+    apiClient.patch<User>('/auth/me', payload),
+
+  changePassword: (payload: { current_password: string; new_password: string }) =>
+    apiClient.patch<{ revoked_sessions: number; message: string }>('/auth/password', payload),
 }
