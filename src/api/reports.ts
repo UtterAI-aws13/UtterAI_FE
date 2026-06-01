@@ -1,24 +1,48 @@
 import { apiClient } from './client'
 
+export type ReportStatus = 'READY' | 'REGENERATING' | 'DELETED'
+
 export interface Report {
-  id: number
-  sessionId: number
-  childName: string
-  date: string
-  status: 'DRAFT' | 'PUBLISHED'
-  mlu: number | null
+  id: string
+  session_id: string
+  result_id: string | null
+  soap_note_id: string | null
+  generated_by: string
+  title: string
+  template_type: string
+  content: string
+  memo: string | null
+  status: ReportStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateReportPayload {
+  session_id: string
+  result_id: string
+  template_type: string
+}
+
+export interface UpdateReportPayload {
+  title?: string
+  content?: string
+  memo?: string
 }
 
 export const reportsApi = {
-  list: () =>
-    apiClient.get<Report[]>('/reports/'),
+  list: (params?: { childId?: string }) =>
+    apiClient.get<Report[]>('/reports', { params }),
 
-  get: (id: number) =>
-    apiClient.get<Report>(`/reports/${id}/`),
+  get: (id: string) =>
+    apiClient.get<Report>(`/reports/${id}`),
 
-  publish: (id: number) =>
-    apiClient.post<Report>(`/reports/${id}/publish/`),
+  create: (payload: CreateReportPayload) =>
+    apiClient.post<Report>('/reports', payload),
 
-  download: (id: number) =>
-    apiClient.get(`/reports/${id}/pdf/`, { responseType: 'blob' }),
+  update: (id: string, payload: UpdateReportPayload) =>
+    apiClient.patch<Report>(`/reports/${id}`, payload),
+
+  // plain text 파일 다운로드
+  download: (id: string) =>
+    apiClient.get(`/reports/${id}/download`, { responseType: 'blob' }),
 }

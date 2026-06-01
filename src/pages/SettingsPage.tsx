@@ -13,7 +13,6 @@ type Tab = 'profile' | 'password'
 const profileSchema = z.object({
   name:  z.string().min(1, '이름을 입력해주세요.'),
   email: z.string().email(),
-  org:   z.string().min(1),
   role:  z.string(),
 })
 type ProfileForm = z.infer<typeof profileSchema>
@@ -58,7 +57,6 @@ export default function SettingsPage() {
     defaultValues: {
       name:  user?.name  ?? '',
       email: user?.email ?? '',
-      org:   user?.org   ?? '',
       role:  user?.role  ?? '',
     },
   })
@@ -151,11 +149,6 @@ export default function SettingsPage() {
                   type="email"
                   disabled
                   {...profileForm.register('email')}
-                />
-                <InputField
-                  label="소속 기관"
-                  {...profileForm.register('org')}
-                  error={profileForm.formState.errors.org?.message}
                 />
                 <InputField
                   label="직함"

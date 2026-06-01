@@ -12,7 +12,7 @@ export function useLogin() {
   return useMutation({
     mutationFn: (payload: LoginPayload) => authApi.login(payload),
     onSuccess: ({ data }) => {
-      setTokens(data.access, data.refresh)
+      setTokens(data.access_token, data.refresh_token)
       setUser(data.user)
       showToast({
         title: `환영합니다, ${data.user.name} 선생님`,
@@ -35,7 +35,7 @@ export function useSignup() {
   return useMutation({
     mutationFn: (payload: SignupPayload) => authApi.signup(payload),
     onSuccess: ({ data }) => {
-      setTokens(data.access, data.refresh)
+      setTokens(data.access_token, data.refresh_token)
       setUser(data.user)
       showToast({ title: '계정이 생성되었습니다', body: '환영합니다!', kind: 'success' })
       navigate('/dashboard')

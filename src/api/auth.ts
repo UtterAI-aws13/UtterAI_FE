@@ -1,4 +1,5 @@
 import { apiClient } from './client'
+import type { User } from '@/store/authStore'
 
 export interface LoginPayload {
   email: string
@@ -9,31 +10,29 @@ export interface SignupPayload {
   name: string
   email: string
   password: string
-  role: 'therapist' | 'admin'
+  role: 'THERAPIST' | 'ADMIN'
 }
 
 export interface TokenResponse {
-  access: string
-  refresh: string
-  user: {
-    id: number
-    name: string
-    email: string
-    role: string
-    org: string
-  }
+  access_token: string
+  refresh_token: string
+  token_type: string
+  user: User
 }
 
 export const authApi = {
   login: (payload: LoginPayload) =>
-    apiClient.post<TokenResponse>('/auth/token/', payload),
+    apiClient.post<TokenResponse>('/auth/login', payload),
 
   signup: (payload: SignupPayload) =>
-    apiClient.post<TokenResponse>('/auth/register/', payload),
+    apiClient.post<TokenResponse>('/auth/signup', payload),
 
-  refreshToken: (refresh: string) =>
-    apiClient.post<{ access: string }>('/auth/token/refresh/', { refresh }),
+  refreshToken: (refresh_token: string) =>
+    apiClient.post<TokenResponse>('/auth/refresh', { refresh_token }),
 
   me: () =>
-    apiClient.get<TokenResponse['user']>('/auth/me/'),
+    apiClient.get<User>('/auth/me'),
+
+  logout: () =>
+    apiClient.post('/auth/logout'),
 }

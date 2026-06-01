@@ -60,12 +60,12 @@ apiClient.interceptors.response.use(
       }
 
       const { data } = await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/auth/token/refresh/`,
-        { refresh: refreshToken },
+        `${import.meta.env.VITE_API_BASE_URL}/auth/refresh`,
+        { refresh_token: refreshToken },
       )
 
-      const newAccess: string = data.access
-      setTokens(newAccess, refreshToken)
+      const newAccess: string = data.access_token
+      setTokens(newAccess, data.refresh_token ?? refreshToken)
       processQueue(null, newAccess)
 
       originalRequest.headers.Authorization = `Bearer ${newAccess}`
