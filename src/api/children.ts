@@ -1,37 +1,45 @@
 import { apiClient } from './client'
 
 export interface Child {
-  id: number
+  id: string
+  therapist_id: string
   name: string
-  dob: string
-  age: string
-  gender: 'M' | 'F' | 'U'
-  registered: string
-  sessions: number
-  lastSession: string
-  primaryGoal: string
+  birth_date: string | null
+  gender: string | null
+  memo: string | null
+  status: 'ACTIVE' | 'DELETED'
+  created_at: string
+  updated_at: string
 }
 
 export interface CreateChildPayload {
   name: string
-  dob: string
-  gender: 'M' | 'F' | 'U'
-  primaryGoal: string
+  birth_date?: string | null
+  gender?: string | null
+  memo?: string | null
+  therapist_id?: string | null
+}
+
+export interface UpdateChildPayload {
+  name?: string
+  birth_date?: string | null
+  gender?: string | null
+  memo?: string | null
 }
 
 export const childrenApi = {
   list: (params?: { search?: string }) =>
-    apiClient.get<Child[]>('/children/', { params }),
+    apiClient.get<Child[]>('/children', { params }),
 
-  get: (id: number) =>
-    apiClient.get<Child>(`/children/${id}/`),
+  get: (id: string) =>
+    apiClient.get<Child>(`/children/${id}`),
 
   create: (payload: CreateChildPayload) =>
-    apiClient.post<Child>('/children/', payload),
+    apiClient.post<Child>('/children', payload),
 
-  update: (id: number, payload: Partial<CreateChildPayload>) =>
-    apiClient.patch<Child>(`/children/${id}/`, payload),
+  update: (id: string, payload: UpdateChildPayload) =>
+    apiClient.patch<Child>(`/children/${id}`, payload),
 
-  delete: (id: number) =>
-    apiClient.delete(`/children/${id}/`),
+  delete: (id: string) =>
+    apiClient.delete<Child>(`/children/${id}`),
 }
