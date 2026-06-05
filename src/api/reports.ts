@@ -18,9 +18,9 @@ export interface Report {
 }
 
 export interface CreateReportPayload {
-  sessionId: string
-  resultId: string
-  templateType: string
+  session_id: string
+  result_id: string
+  template_type: string
 }
 
 export interface UpdateReportPayload {

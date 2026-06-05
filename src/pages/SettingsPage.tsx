@@ -13,7 +13,9 @@ import { authApi } from '@/api/auth'
 type Tab = 'profile' | 'password'
 
 const profileSchema = z.object({
-  name: z.string().min(1, '이름을 입력해주세요.'),
+  name:  z.string().min(1, '이름을 입력해주세요.'),
+  email: z.string().email(),
+  role:  z.string(),
 })
 type ProfileForm = z.infer<typeof profileSchema>
 
@@ -65,7 +67,11 @@ export default function SettingsPage() {
 
   const profileForm = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
-    defaultValues: { name: user?.name ?? '' },
+    defaultValues: {
+      name:  user?.name  ?? '',
+      email: user?.email ?? '',
+      role:  user?.role  ?? '',
+    },
   })
 
   const pwForm = useForm<PwForm>({ resolver: zodResolver(pwSchema) })
@@ -169,8 +175,17 @@ export default function SettingsPage() {
                   {...profileForm.register('name')}
                   error={profileForm.formState.errors.name?.message}
                 />
-                <InputField label="이메일" type="email" disabled value={user?.email ?? ''} />
-                <InputField label="직함" disabled value={user?.role ?? ''} />
+                <InputField
+                  label="이메일"
+                  type="email"
+                  disabled
+                  {...profileForm.register('email')}
+                />
+                <InputField
+                  label="직함"
+                  disabled
+                  {...profileForm.register('role')}
+                />
                 <div className="pt-2">
                   <button
                     type="submit"

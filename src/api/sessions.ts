@@ -40,7 +40,7 @@ export interface UpdateSessionPayload {
 }
 
 export const sessionsApi = {
-  list: (params?: { child_id?: string }) =>
+  list: (params?: { child_id?: string; status?: SessionStatus }) =>
     apiClient.get<Session[]>('/sessions', { params }),
 
   get: (id: string) =>
@@ -56,8 +56,5 @@ export const sessionsApi = {
     apiClient.delete<Session>(`/sessions/${id}`),
 
   listReports: (sessionId: string) =>
-    apiClient.get<Report[]>(`/sessions/${sessionId}/reports`),
-
-  getAnalysisResult: (sessionId: string) =>
-    apiClient.get<AnalysisResult>(`/sessions/${sessionId}/analysis-results`),
+    apiClient.get(`/sessions/${sessionId}/reports`),
 }

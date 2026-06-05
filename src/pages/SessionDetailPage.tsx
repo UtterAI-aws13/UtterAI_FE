@@ -4,14 +4,12 @@ import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@/components/common/Icon'
 import { useToast } from '@/hooks/useToast'
 import { cn } from '@/lib/utils'
-import { sessionsApi, type SessionStatus } from '@/api/sessions'
-import { childrenApi } from '@/api/children'
-import { uploadSessionAudio } from '@/api/audio'
-import { analysisApi, type AnalysisJobStatus } from '@/api/analysis'
-import { transcriptsApi, type Transcript } from '@/api/transcripts'
-import { soapNoteApi, type SoapNote } from '@/api/soapNote'
-import { reportsApi, type Report } from '@/api/reports'
-import type { AnalysisResult } from '@/api/analysisResult'
+import type { SessionStatus } from '@/api/sessions'
+
+// UI 전용 타입 — 나중에 BE 연동 시 transcript.ts / soapNotes.ts 타입으로 교체
+type Utterance = { t: string; speaker: 'CHILD' | 'THERAPIST' | 'UNKNOWN'; text: string; edited?: boolean }
+type Metric    = { label: string; desc: string; value: string; delta: string; dir: 'up' | 'down'; good: boolean }
+type SoapNote  = { S: string; O: string; A: string; P: string }
 
 type Step = 1 | 2 | 3 | 4
 
