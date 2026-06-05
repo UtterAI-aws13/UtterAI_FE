@@ -1,4 +1,6 @@
 import { apiClient } from './client'
+import type { AnalysisResult } from './analysisResult'
+import type { Report } from './reports'
 
 export type SessionStatus =
   | 'CREATED'

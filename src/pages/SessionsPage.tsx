@@ -1,19 +1,17 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Icon } from '@/components/common/Icon'
 import { cn } from '@/lib/utils'
-import type { SessionStatus } from '@/api/sessions'
+import { sessionsApi, type SessionStatus } from '@/api/sessions'
+import { childrenApi } from '@/api/children'
 
-const MOCK_SESSIONS = [
-  { id: 24, child: '박서윤', age: '6세 2개월',  date: '2026.05.28', time: '14:00', kind: '개별', status: 'ANALYSIS_COMPLETED' as SessionStatus, mlu: 4.27 },
-  { id: 23, child: '이하준', age: '5세 8개월',  date: '2026.05.28', time: '11:30', kind: '개별', status: 'ANALYSIS_PROCESSING' as SessionStatus, mlu: null },
-  { id: 22, child: '최예나', age: '4세 11개월', date: '2026.05.27', time: '16:00', kind: '그룹', status: 'REPORT_READY'         as SessionStatus, mlu: 3.91 },
-  { id: 21, child: '정도윤', age: '7세 1개월',  date: '2026.05.27', time: '13:00', kind: '개별', status: 'FAILED'               as SessionStatus, mlu: null },
-  { id: 20, child: '강하린', age: '5세 4개월',  date: '2026.05.26', time: '15:30', kind: '개별', status: 'AUDIO_UPLOADED'       as SessionStatus, mlu: null },
-  { id: 19, child: '윤시아', age: '6세 7개월',  date: '2026.05.26', time: '10:00', kind: '개별', status: 'ANALYSIS_COMPLETED'   as SessionStatus, mlu: 4.12 },
-  { id: 18, child: '한이서', age: '4세 5개월',  date: '2026.05.25', time: '14:30', kind: '그룹', status: 'CREATED'              as SessionStatus, mlu: null },
-]
+const SESSION_TYPE_LABEL: Record<string, string> = { INDIVIDUAL: '개별', GROUP: '그룹' }
+
+function fmtDate(iso: string) {
+  return iso.slice(0, 10).replaceAll('-', '.')
+}
 
 const STATUS_FILTERS: Array<{ label: string; value: SessionStatus | 'all' }> = [
   { label: '전체',     value: 'all' },
@@ -28,9 +26,25 @@ export default function SessionsPage() {
   const [statusFilter, setStatusFilter] = useState<SessionStatus | 'all'>('all')
   const [query, setQuery] = useState('')
 
-  const filtered = MOCK_SESSIONS.filter((s) => {
+  const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
+    queryKey: ['sessions'],
+    queryFn: () => sessionsApi.list().then((r) => r.data),
+  })
+
+  const { data: children = [] } = useQuery({
+    queryKey: ['children'],
+    queryFn: () => childrenApi.list().then((r) => r.data),
+  })
+
+  const childMap = Object.fromEntries(children.map((c) => [c.id, c]))
+
+  const filtered = sessions.filter((s) => {
+    if (s.status === 'DELETED') return false
     if (statusFilter !== 'all' && s.status !== statusFilter) return false
-    if (query && !s.child.includes(query)) return false
+    if (query) {
+      const child = childMap[s.child_id]
+      if (!child?.name.includes(query)) return false
+    }
     return true
   })
 
@@ -39,7 +53,7 @@ export default function SessionsPage() {
       <div className="px-8 pt-7 pb-5 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-ink-800 tracking-tight">세션 관리</h1>
-          <p className="text-[13px] text-ink-500 mt-1">총 {MOCK_SESSIONS.length}개 세션</p>
+          <p className="text-[13px] text-ink-500 mt-1">총 {filtered.length}개 세션</p>
         </div>
         <button
           onClick={() => navigate('/sessions/new')}
@@ -51,7 +65,6 @@ export default function SessionsPage() {
 
       <div className="px-8 pb-8">
         <div className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden">
-          {/* Toolbar */}
           <div className="flex items-center gap-3 px-5 py-3.5 border-b border-ink-100 flex-wrap">
             <div className="relative">
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none">
@@ -82,7 +95,9 @@ export default function SessionsPage() {
             </div>
           </div>
 
-          {filtered.length === 0 ? (
+          {sessionsLoading ? (
+            <div className="py-16 text-center text-ink-400 text-[13px]">불러오는 중…</div>
+          ) : filtered.length === 0 ? (
             <div className="py-16 text-center">
               <div className="w-16 h-16 rounded-2xl bg-brand-50 flex items-center justify-center text-brand-600 mx-auto mb-4">
                 <Icon name="audio" size={28} strokeWidth={1.8} />
@@ -94,45 +109,44 @@ export default function SessionsPage() {
             <table className="w-full text-[13px] border-collapse">
               <thead>
                 <tr className="bg-ink-50">
-                  {['#', '아동', '일시', '유형', '상태', 'MLU'].map((h, i) => (
-                    <th key={h} className={cn(
+                  {['아동', '날짜', '유형', '상태', ''].map((h, i) => (
+                    <th key={i} className={cn(
                       'py-2.5 px-5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100',
-                      i >= 5 ? 'text-right' : 'text-left',
+                      'text-left',
                     )}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((s) => (
-                  <tr
-                    key={s.id}
-                    onClick={() => navigate(`/sessions/${s.id}`)}
-                    className="border-t border-ink-100 hover:bg-brand-25 cursor-pointer transition-colors"
-                  >
-                    <td className="px-5 py-3 font-mono-num text-ink-400">#{s.id}</td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[13px] font-bold">
-                          {s.child[0]}
+                {filtered.map((s) => {
+                  const child = childMap[s.child_id]
+                  return (
+                    <tr
+                      key={s.id}
+                      onClick={() => navigate(`/sessions/${s.id}`)}
+                      className="border-t border-ink-100 hover:bg-brand-25 cursor-pointer transition-colors"
+                    >
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[13px] font-bold">
+                            {child ? child.name[0] : '?'}
+                          </div>
+                          <p className="font-semibold text-ink-800">{child?.name ?? '—'}</p>
                         </div>
-                        <div>
-                          <p className="font-semibold text-ink-800">{s.child}</p>
-                          <p className="text-[11px] text-ink-500">{s.age}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 font-mono-num text-ink-500">{s.date} {s.time}</td>
-                    <td className="px-5 py-3">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-ink-100 text-ink-600">
-                        {s.kind}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3"><StatusBadge status={s.status} /></td>
-                    <td className="px-5 py-3 text-right font-mono-num font-semibold text-ink-800">
-                      {s.mlu != null ? s.mlu.toFixed(2) : '—'}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-5 py-3 font-mono-num text-ink-500">{fmtDate(s.session_date)}</td>
+                      <td className="px-5 py-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-ink-100 text-ink-600">
+                          {SESSION_TYPE_LABEL[s.session_type ?? ''] ?? s.session_type ?? '—'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3"><StatusBadge status={s.status} /></td>
+                      <td className="px-5 py-3 text-right">
+                        <Icon name="chevronRight" size={14} strokeWidth={2.2} className="text-ink-400" />
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}

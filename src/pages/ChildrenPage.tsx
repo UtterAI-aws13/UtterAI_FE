@@ -30,56 +30,157 @@ const MOCK_CHILDREN: ChildRow[] = [
 
 const GENDER_LABEL: Record<string, string> = { M: '남아', F: '여아', U: '미입력' }
 
-function avatarClass(g: string) {
+function avatarClass(g: string | null) {
   return cn(
     'w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold flex-shrink-0',
     g === 'F' ? 'bg-pink-100 text-pink-700' : g === 'M' ? 'bg-blue-100 text-blue-700' : 'bg-ink-100 text-ink-600',
   )
 }
 
-function genderChipClass(g: string) {
+function genderChipClass(g: string | null) {
   return cn(
     'inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold',
     g === 'F' ? 'bg-pink-100 text-pink-700' : g === 'M' ? 'bg-blue-100 text-blue-700' : 'bg-ink-100 text-ink-600',
   )
 }
 
+function CreateChildModal({ onClose }: { onClose: () => void }) {
+  const { showToast } = useToast()
+  const qc = useQueryClient()
+  const [form, setForm] = useState<CreateChildPayload>({ name: '', birth_date: null, gender: null, memo: null })
+
+  const create = useMutation({
+    mutationFn: () => childrenApi.create(form).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['children'] })
+      showToast({ title: '아동이 등록되었습니다', kind: 'success' })
+      onClose()
+    },
+    onError: () => showToast({ title: '등록에 실패했습니다', kind: 'error' }),
+  })
+
+  const inputClass = 'w-full h-10 px-3 border border-ink-300 rounded-lg text-[13px] outline-none focus:border-brand-500 font-sans'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-[420px]" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-[16px] font-bold text-ink-800 mb-5">아동 등록</h2>
+        <div className="flex flex-col gap-4">
+          <div>
+            <label className="block text-[12px] font-medium text-ink-700 mb-1.5">이름 <span className="text-red-500">*</span></label>
+            <input
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="홍길동"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className="block text-[12px] font-medium text-ink-700 mb-1.5">생년월일</label>
+            <input
+              type="date"
+              value={form.birth_date ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, birth_date: e.target.value || null }))}
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className="block text-[12px] font-medium text-ink-700 mb-1.5">성별</label>
+            <select
+              value={form.gender ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, gender: (e.target.value as 'M' | 'F') || null }))}
+              className={inputClass + ' cursor-pointer'}
+            >
+              <option value="">선택 안 함</option>
+              <option value="M">남아</option>
+              <option value="F">여아</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[12px] font-medium text-ink-700 mb-1.5">치료 목표 / 메모</label>
+            <textarea
+              value={form.memo ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, memo: e.target.value || null }))}
+              placeholder="주요 치료 목표나 메모를 입력하세요"
+              rows={3}
+              className="w-full px-3 py-2 border border-ink-300 rounded-lg text-[13px] outline-none focus:border-brand-500 font-sans resize-none"
+            />
+          </div>
+        </div>
+        <div className="flex gap-3 mt-6 justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 border border-ink-200 text-ink-600 rounded-full text-[13px] font-semibold hover:bg-ink-50"
+          >
+            취소
+          </button>
+          <button
+            onClick={() => create.mutate()}
+            disabled={!form.name.trim() || create.isPending}
+            className="px-4 py-2 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 disabled:opacity-50 disabled:cursor-wait"
+          >
+            {create.isPending ? '등록 중…' : '등록'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ChildrenPage() {
   const navigate = useNavigate()
   const { showToast } = useToast()
+  const qc = useQueryClient()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | 'new'>('all')
-  const [children, setChildren] = useState(MOCK_CHILDREN)
+  const [showCreate, setShowCreate] = useState(false)
+
+  const { data: children = [], isLoading } = useQuery({
+    queryKey: ['children'],
+    queryFn: () => childrenApi.list().then((r) => r.data),
+  })
+
+  const deleteChild = useMutation({
+    mutationFn: (id: string) => childrenApi.delete(id),
+    onSuccess: (_, id) => {
+      qc.setQueryData<Child[]>(['children'], (prev) => prev?.filter((c) => c.id !== id) ?? [])
+      showToast({ title: '아동 정보가 삭제되었습니다', kind: 'success' })
+    },
+    onError: () => showToast({ title: '삭제에 실패했습니다', kind: 'error' }),
+  })
 
   const filtered = children.filter((c) => {
+    if (c.status === 'DELETED') return false
     if (query && !c.name.includes(query)) return false
     if (filter === 'new') {
-      const reg = new Date(c.registered.replaceAll('.', '-'))
-      if (reg < new Date('2026-03-01')) return false
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      if (new Date(c.created_at) < thirtyDaysAgo) return false
     }
     return true
   })
 
   const handleDelete = (c: ChildRow, e: React.MouseEvent) => {
     e.stopPropagation()
-    setChildren((cs) => cs.filter((x) => x.id !== c.id))
-    showToast({ title: '아동 정보가 삭제되었습니다', body: `${c.name} 아동 정보가 삭제되었어요.`, kind: 'success' })
+    deleteChild.mutate(c.id)
   }
 
   const CHIPS = [
-    { label: '전체', value: 'all' as const },
+    { label: '전체',    value: 'all' as const },
     { label: '최근 등록', value: 'new' as const },
   ]
 
   return (
     <div>
+      {showCreate && <CreateChildModal onClose={() => setShowCreate(false)} />}
+
       <div className="px-8 pt-7 pb-5 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-ink-800 tracking-tight">아동 관리</h1>
-          <p className="text-[13px] text-ink-500 mt-1">총 {children.length}명의 아동</p>
+          <p className="text-[13px] text-ink-500 mt-1">총 {filtered.length}명의 아동</p>
         </div>
         <button
-          onClick={() => showToast({ title: '아동 등록 기능', body: 'API 연동 후 사용 가능합니다.', kind: 'info' })}
+          onClick={() => setShowCreate(true)}
           className="flex items-center gap-2 px-4 py-2 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 transition-colors shadow-md"
         >
           <Icon name="plus" size={15} />아동 등록
@@ -88,7 +189,6 @@ export default function ChildrenPage() {
 
       <div className="px-8 pb-8">
         <div className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden">
-          {/* Toolbar */}
           <div className="flex items-center gap-3 px-5 py-3.5 border-b border-ink-100">
             <div className="relative flex-1 max-w-[320px]">
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none">
@@ -119,7 +219,9 @@ export default function ChildrenPage() {
             </div>
           </div>
 
-          {filtered.length === 0 ? (
+          {isLoading ? (
+            <div className="py-16 text-center text-ink-400 text-[13px]">불러오는 중…</div>
+          ) : filtered.length === 0 ? (
             <div className="py-16 text-center">
               <div className="w-16 h-16 rounded-2xl bg-brand-50 flex items-center justify-center text-brand-600 mx-auto mb-4">
                 <Icon name="users" size={28} strokeWidth={1.8} />
@@ -135,13 +237,17 @@ export default function ChildrenPage() {
             <table className="w-full text-[13px] border-collapse">
               <thead>
                 <tr className="bg-ink-50">
-                  <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">이름</th>
-                  <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">생년월일</th>
-                  <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">성별</th>
-                  <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">주 목표</th>
-                  <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">등록일</th>
-                  <th className="text-right px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">세션 수</th>
-                  <th className="text-right px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">액션</th>
+                  {['이름', '생년월일', '성별', '메모', '등록일', '액션'].map((h, i) => (
+                    <th
+                      key={h}
+                      className={cn(
+                        'py-2.5 px-5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100',
+                        i === 5 ? 'text-right' : 'text-left',
+                      )}
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -156,18 +262,20 @@ export default function ChildrenPage() {
                         <div className={avatarClass(c.gender)}>{c.name[0]}</div>
                         <div>
                           <p className="font-semibold text-ink-800">{c.name}</p>
-                          <p className="text-[11px] text-ink-500 mt-0.5">{c.age}</p>
+                          <p className="text-[11px] text-ink-500 mt-0.5">{calcAge(c.birth_date)}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-5 py-3 font-mono-num text-ink-500">{c.dob}</td>
-                    <td className="px-5 py-3"><span className={genderChipClass(c.gender)}>{GENDER_LABEL[c.gender]}</span></td>
-                    <td className="px-5 py-3 text-ink-600">{c.primaryGoal}</td>
-                    <td className="px-5 py-3 font-mono-num text-ink-500">{c.registered}</td>
-                    <td className="px-5 py-3 text-right">
-                      <span className="font-mono-num font-semibold text-ink-800">{c.sessions}</span>
-                      <span className="text-[11px] text-ink-500 ml-1">회</span>
+                    <td className="px-5 py-3 font-mono-num text-ink-500">
+                      {c.birth_date ? fmtDate(c.birth_date) : '—'}
                     </td>
+                    <td className="px-5 py-3">
+                      <span className={genderChipClass(c.gender)}>
+                        {GENDER_LABEL[c.gender ?? ''] ?? '미입력'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-ink-600 max-w-[200px] truncate">{c.memo ?? '—'}</td>
+                    <td className="px-5 py-3 font-mono-num text-ink-500">{fmtDate(c.created_at)}</td>
                     <td className="px-5 py-3 text-right">
                       <div className="inline-flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
