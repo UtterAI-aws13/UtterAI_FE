@@ -187,7 +187,7 @@ export default function ChildrenPage() {
       {showModal && (
         <ChildFormModal
           onClose={() => setShowModal(false)}
-          onCreated={(child) => setChildren((cs) => [child, ...cs])}
+          onDone={(child) => setChildren((cs) => [child, ...cs])}
         />
       )}
     </div>
