@@ -9,7 +9,7 @@ export interface SignupPayload {
   name: string
   email: string
   password: string
-  role: 'therapist' | 'admin'
+  role: 'THERAPIST' | 'ADMIN'
 }
 
 export interface User {

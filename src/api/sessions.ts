@@ -2,11 +2,14 @@ import { apiClient } from './client'
 
 export type SessionStatus =
   | 'CREATED'
+  | 'AUDIO_UPLOADING'
   | 'AUDIO_UPLOADED'
+  | 'ANALYSIS_REQUESTED'
   | 'ANALYSIS_PROCESSING'
   | 'ANALYSIS_COMPLETED'
   | 'REPORT_READY'
   | 'FAILED'
+  | 'DELETED'
 
 export interface Session {
   id: string
