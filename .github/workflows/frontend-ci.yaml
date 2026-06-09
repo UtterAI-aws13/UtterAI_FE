@@ -1,0 +1,66 @@
+name: Frontend CI
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+    paths:
+      - "src/**"
+      - "public/**"
+      - "assets/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "postcss.config.js"
+      - "tailwind.config.js"
+      - "tsconfig.json"
+      - "tsconfig.node.json"
+      - "vite.config.ts"
+      - ".github/workflows/frontend-ci.yaml"
+
+  push:
+    branches:
+      - dev
+      - main
+      - "feature/**"
+    paths:
+      - "src/**"
+      - "public/**"
+      - "assets/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "postcss.config.js"
+      - "tailwind.config.js"
+      - "tsconfig.json"
+      - "tsconfig.node.json"
+      - "vite.config.ts"
+      - ".github/workflows/frontend-ci.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-check:
+    name: Frontend build check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        env:
+          # CI에서는 실제 dev/prod API가 없어도 build 검증만 가능하도록 로컬 기본값을 사용합니다.
+          VITE_API_BASE_URL: http://localhost:8000/api/v1
+        run: npm run build
