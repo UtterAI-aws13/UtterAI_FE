@@ -5,7 +5,7 @@ import { childrenApi, type Child } from '@/api/children'
 import { audioApi } from '@/api/audio'
 import { analysisApi, type AnalysisJob } from '@/api/analysis'
 import { transcriptsApi, type Transcript } from '@/api/transcripts'
-import { type TranscriptSegment, type SpeakerRole } from '@/api/analysisResult'
+import { analysisResultApi, type TranscriptSegment, type SpeakerRole, type AnalysisResultSpeaker } from '@/api/analysisResult'
 import { soapNoteApi, type SoapNote } from '@/api/soapNote'
 import { Icon } from '@/components/common/Icon'
 import { useToast } from '@/hooks/useToast'
@@ -72,6 +72,9 @@ export default function SessionDetailPage() {
   const [savingSoap, setSavingSoap]       = useState(false)
   const [finalizingSoap, setFinalizingSoap] = useState(false)
 
+  const [speakers, setSpeakers]               = useState<AnalysisResultSpeaker[]>([])
+  const [interpretationText, setInterpretationText] = useState<string | null>(null)
+
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting]           = useState(false)
 
@@ -102,12 +105,21 @@ export default function SessionDetailPage() {
           setTranscript(txRes.data)
         }
         if (s === 4) {
-          const [txRes, soapRes] = await Promise.all([
+          const [txRes, soapRes, resultRes] = await Promise.all([
             transcriptsApi.getBySession(id),
             soapNoteApi.list({ sessionId: id }),
+            analysisApi.getResultsBySession(id),
           ])
           setTranscript(txRes.data)
           if (soapRes.data.length > 0) setSoapNote(soapRes.data[0])
+          if (resultRes.data.length > 0) {
+            const result = resultRes.data[0]
+            setInterpretationText(result.interpretation_text)
+            try {
+              const speakerRes = await analysisResultApi.getSpeakers(result.id)
+              setSpeakers(speakerRes.data.speakers)
+            } catch { /* optional */ }
+          }
         }
       })
       .catch(() => showToast({ title: '세션 정보를 불러오지 못했습니다', kind: 'error' }))
@@ -547,6 +559,41 @@ export default function SessionDetailPage() {
                     </div>
                   )
                 })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Step 4 — Analysis summary */}
+        {step === 4 && (speakers.length > 0 || interpretationText) && (
+          <div className="bg-white rounded-xl border border-ink-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-ink-100">
+              <p className="text-[16px] font-semibold text-ink-800">분석 요약</p>
+            </div>
+            <div className="p-6 flex flex-col gap-5">
+              {speakers.length > 0 && (
+                <div>
+                  <p className="text-[12px] font-semibold text-ink-500 uppercase tracking-wide mb-3">발화 통계</p>
+                  <div className="flex flex-wrap gap-3">
+                    {speakers.map((sp) => {
+                      const s = speakerMap[sp.speaker_role] ?? speakerMap.UNKNOWN
+                      return (
+                        <div key={sp.speaker_id} className={cn('flex items-center gap-2.5 px-4 py-2.5 rounded-xl border', s.bg, 'border-transparent')}>
+                          <span className={cn('text-[13px] font-semibold', s.fg)}>{s.label}</span>
+                          <span className="text-[11px] text-ink-400">·</span>
+                          <span className="text-[13px] font-bold text-ink-800">{sp.utterance_count.toLocaleString()}</span>
+                          <span className="text-[11px] text-ink-500">발화</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {interpretationText && (
+                <div>
+                  <p className="text-[12px] font-semibold text-ink-500 uppercase tracking-wide mb-2">AI 해석</p>
+                  <p className="text-[13px] text-ink-700 leading-relaxed whitespace-pre-wrap">{interpretationText}</p>
+                </div>
               )}
             </div>
           </div>
