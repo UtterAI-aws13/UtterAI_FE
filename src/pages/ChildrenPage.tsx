@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { childrenApi, type Child } from '@/api/children'
 import { Icon } from '@/components/common/Icon'
+import { ChildFormModal } from '@/components/common/ChildFormModal'
 import { useToast } from '@/hooks/useToast'
 import { cn, computeAge, formatDate } from '@/lib/utils'
 
@@ -28,6 +29,7 @@ export default function ChildrenPage() {
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | 'new'>('all')
+  const [showModal, setShowModal] = useState(false)
 
   useEffect(() => {
     childrenApi.list()
@@ -68,7 +70,7 @@ export default function ChildrenPage() {
           <p className="text-[13px] text-ink-500 mt-1">총 {children.length}명의 아동</p>
         </div>
         <button
-          onClick={() => showToast({ title: '아동 등록 기능', body: '준비 중입니다.', kind: 'info' })}
+          onClick={() => setShowModal(true)}
           className="flex items-center gap-2 px-4 py-2 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 transition-colors shadow-md"
         >
           <Icon name="plus" size={15} />아동 등록
@@ -181,6 +183,13 @@ export default function ChildrenPage() {
           )}
         </div>
       </div>
+
+      {showModal && (
+        <ChildFormModal
+          onClose={() => setShowModal(false)}
+          onCreated={(child) => setChildren((cs) => [child, ...cs])}
+        />
+      )}
     </div>
   )
 }

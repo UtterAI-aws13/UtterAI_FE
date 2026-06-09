@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { templatesApi, type Template } from '@/api/templates'
 import { Icon } from '@/components/common/Icon'
+import { TemplateFormModal } from '@/components/common/TemplateFormModal'
 import { useToast } from '@/hooks/useToast'
 import { cn } from '@/lib/utils'
 
@@ -11,6 +12,7 @@ export default function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [category, setCategory] = useState('전체')
+  const [modal, setModal] = useState<null | 'create' | Template>(null)
 
   useEffect(() => {
     templatesApi.list()
@@ -31,7 +33,7 @@ export default function TemplatesPage() {
           <p className="text-[13px] text-ink-500 mt-1">세션 및 리포트 템플릿을 관리합니다</p>
         </div>
         <button
-          onClick={() => showToast({ title: '새 템플릿 생성', body: '기능 준비 중입니다.', kind: 'info' })}
+          onClick={() => setModal('create')}
           className="flex items-center gap-2 px-4 py-2 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 transition-colors shadow-md"
         >
           <Icon name="plus" size={15} />새 템플릿
@@ -87,7 +89,7 @@ export default function TemplatesPage() {
                 {!t.is_system && (
                   <div className="mt-3 pt-3 border-t border-ink-100 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      onClick={() => showToast({ title: '템플릿 편집', body: '기능 준비 중입니다.' })}
+                      onClick={() => setModal(t)}
                       className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[12px] font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 transition-colors"
                     >
                       <Icon name="edit" size={13} />편집
@@ -105,6 +107,18 @@ export default function TemplatesPage() {
           </div>
         )}
       </div>
+
+      {modal !== null && (
+        <TemplateFormModal
+          template={modal === 'create' ? undefined : modal}
+          onClose={() => setModal(null)}
+          onSaved={(saved) => setTemplates((ts) =>
+            modal === 'create'
+              ? [saved, ...ts]
+              : ts.map((t) => t.id === saved.id ? saved : t),
+          )}
+        />
+      )}
     </div>
   )
 }
