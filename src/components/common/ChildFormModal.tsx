@@ -15,30 +15,46 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 interface Props {
-  onClose:   () => void
-  onCreated: (child: Child) => void
+  child?:  Child
+  onClose: () => void
+  onDone:  (child: Child) => void
 }
 
-export function ChildFormModal({ onClose, onCreated }: Props) {
+export function ChildFormModal({ child, onClose, onDone }: Props) {
+  const isEdit = !!child
   const { showToast } = useToast()
+
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver:      zodResolver(schema),
-    defaultValues: { gender: 'U' },
+    defaultValues: {
+      name:       child?.name       ?? '',
+      birth_date: child?.birth_date ?? '',
+      gender:     (child?.gender as 'M' | 'F' | 'U') ?? 'U',
+      memo:       child?.memo       ?? '',
+    },
   })
 
   const onSubmit = async (values: FormValues) => {
     try {
-      const { data } = await childrenApi.create({
+      const payload = {
         name:       values.name,
         birth_date: values.birth_date || undefined,
         gender:     values.gender !== 'U' ? values.gender : undefined,
         memo:       values.memo || undefined,
+      }
+      const { data } = isEdit
+        ? await childrenApi.update(child.id, payload)
+        : await childrenApi.create(payload)
+
+      showToast({
+        title: isEdit ? '아동 정보가 수정되었습니다' : '아동이 등록되었습니다',
+        body:  isEdit ? undefined : `${values.name} 아동이 추가되었어요.`,
+        kind:  'success',
       })
-      showToast({ title: '아동이 등록되었습니다', body: `${values.name} 아동이 추가되었어요.`, kind: 'success' })
-      onCreated(data)
+      onDone(data)
       onClose()
     } catch {
-      showToast({ title: '아동 등록에 실패했습니다', kind: 'error' })
+      showToast({ title: isEdit ? '수정에 실패했습니다' : '아동 등록에 실패했습니다', kind: 'error' })
     }
   }
 
@@ -56,7 +72,7 @@ export function ChildFormModal({ onClose, onCreated }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-ink-100">
-          <h2 className="text-[16px] font-bold text-ink-800">아동 등록</h2>
+          <h2 className="text-[16px] font-bold text-ink-800">{isEdit ? '아동 정보 수정' : '아동 등록'}</h2>
           <button
             onClick={onClose}
             className="w-7 h-7 flex items-center justify-center rounded-lg text-ink-400 hover:bg-ink-100 transition-colors"
@@ -114,7 +130,7 @@ export function ChildFormModal({ onClose, onCreated }: Props) {
               disabled={isSubmitting}
               className="px-4 py-2 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 transition-colors disabled:opacity-60"
             >
-              {isSubmitting ? '등록 중…' : '등록'}
+              {isSubmitting ? (isEdit ? '저장 중…' : '등록 중…') : (isEdit ? '저장' : '등록')}
             </button>
           </div>
         </form>

@@ -4,6 +4,7 @@ import { childrenApi, type Child } from '@/api/children'
 import { sessionsApi, type Session } from '@/api/sessions'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Icon } from '@/components/common/Icon'
+import { ChildFormModal } from '@/components/common/ChildFormModal'
 import { cn, computeAge, formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 
@@ -15,6 +16,7 @@ export default function ChildDetailPage() {
   const [child, setChild] = useState<Child | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
+  const [showEdit, setShowEdit] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -68,10 +70,17 @@ export default function ChildDetailPage() {
               )}>
                 {child.name[0]}
               </div>
-              <div>
+              <div className="flex-1">
                 <p className="font-bold text-[16px] text-ink-800">{child.name}</p>
                 <p className="text-[12px] text-ink-500">{formatDate(child.birth_date)}</p>
               </div>
+              <button
+                onClick={() => setShowEdit(true)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-ink-400 hover:bg-ink-100 hover:text-ink-700 transition-colors"
+                title="정보 수정"
+              >
+                <Icon name="edit" size={14} />
+              </button>
             </div>
             <div className="flex flex-col gap-3">
               {[
@@ -141,6 +150,14 @@ export default function ChildDetailPage() {
           </div>
         </div>
       </div>
+
+      {showEdit && child && (
+        <ChildFormModal
+          child={child}
+          onClose={() => setShowEdit(false)}
+          onDone={(updated) => setChild(updated)}
+        />
+      )}
     </div>
   )
 }
