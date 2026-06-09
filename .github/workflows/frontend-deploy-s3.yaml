@@ -1,0 +1,154 @@
+name: Frontend Deploy S3
+
+on:
+  push:
+    branches:
+      - dev
+      # - main (main merge 이전까지 임시로 막음)
+      
+    paths:
+      - "src/**"
+      - "public/**"
+      - "assets/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "postcss.config.js"
+      - "tailwind.config.js"
+      - "tsconfig.json"
+      - "tsconfig.node.json"
+      - "vite.config.ts"
+      - ".github/workflows/frontend-deploy-s3.yaml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  prepare:
+    name: Prepare frontend release metadata
+    runs-on: ubuntu-latest
+
+    outputs:
+      target_env: ${{ steps.meta.outputs.target_env }}
+      release_id: ${{ steps.meta.outputs.release_id }}
+
+    steps:
+      - name: Create release metadata
+        id: meta
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            TARGET_ENV="prod"
+            RELEASE_ID="prod-${SHORT_SHA}"
+          elif [ "${GITHUB_REF_NAME}" = "dev" ]; then
+            TARGET_ENV="dev"
+            RELEASE_ID="dev-${SHORT_SHA}"
+          else
+            echo "Frontend 배포는 dev 또는 main 브랜치에서만 실행합니다."
+            exit 1
+          fi
+
+          echo "target_env=$TARGET_ENV" >> "$GITHUB_OUTPUT"
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+
+          echo "TARGET_ENV=$TARGET_ENV"
+          echo "RELEASE_ID=$RELEASE_ID"
+
+  build-and-deploy:
+    name: Build and deploy frontend
+    runs-on: ubuntu-latest
+    needs: prepare
+
+    environment:
+      name: ${{ needs.prepare.outputs.target_env }}
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+      FRONTEND_S3_BUCKET: ${{ vars.FRONTEND_S3_BUCKET }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+      RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate required variables
+        run: |
+          if [ -z "$AWS_REGION" ]; then
+            echo "AWS_REGION GitHub Variable이 필요합니다."
+            exit 1
+          fi
+
+          if [ -z "$AWS_ROLE_ARN" ]; then
+            echo "AWS_ROLE_ARN GitHub Variable이 필요합니다."
+            exit 1
+          fi
+
+          if [ -z "$FRONTEND_S3_BUCKET" ]; then
+            echo "FRONTEND_S3_BUCKET GitHub Variable이 필요합니다."
+            exit 1
+          fi
+
+          if [ -z "$VITE_API_BASE_URL" ]; then
+            echo "VITE_API_BASE_URL GitHub Variable이 필요합니다."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload immutable release assets
+        run: |
+          aws s3 sync dist "s3://${FRONTEND_S3_BUCKET}/releases/${RELEASE_ID}/" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "index.html"
+
+      - name: Upload release index
+        run: |
+          aws s3 cp dist/index.html "s3://${FRONTEND_S3_BUCKET}/releases/${RELEASE_ID}/index.html" \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --content-type "text/html"
+
+      - name: Update current release assets
+        run: |
+          aws s3 sync "s3://${FRONTEND_S3_BUCKET}/releases/${RELEASE_ID}/" "s3://${FRONTEND_S3_BUCKET}/current/" \
+            --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          if [ -z "$CLOUDFRONT_DISTRIBUTION_ID" ]; then
+            echo "CLOUDFRONT_DISTRIBUTION_ID가 없어 CloudFront invalidation을 건너뜁니다."
+            exit 0
+          fi
+
+          aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths "/*"
+
+      - name: Print deployment summary
+        run: |
+          echo "Frontend release deployed."
+          echo "bucket: $FRONTEND_S3_BUCKET"
+          echo "release: $RELEASE_ID"
