@@ -1,56 +1,22 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { sessionsApi, type Session, type SessionStatus } from '@/api/sessions'
+import { childrenApi, type Child } from '@/api/children'
+import { audioApi } from '@/api/audio'
+import { analysisApi, type AnalysisJob } from '@/api/analysis'
+import { transcriptApi, type Transcript, type SpeakerRole } from '@/api/transcript'
+import { soapNoteApi, type SoapNote } from '@/api/soapNote'
 import { Icon } from '@/components/common/Icon'
 import { useToast } from '@/hooks/useToast'
-import { cn } from '@/lib/utils'
-import type { SessionStatus } from '@/api/sessions'
-
-// UI 전용 타입 — 나중에 BE 연동 시 transcript.ts / soapNotes.ts 타입으로 교체
-type Utterance = { t: string; speaker: 'CHILD' | 'THERAPIST' | 'UNKNOWN'; text: string; edited?: boolean }
-type Metric    = { label: string; desc: string; value: string; delta: string; dir: 'up' | 'down'; good: boolean }
-type SoapNote  = { S: string; O: string; A: string; P: string }
+import { cn, formatDate, formatSeconds } from '@/lib/utils'
 
 type Step = 1 | 2 | 3 | 4
-
-const MOCK_SESSION = {
-  id: 24,
-  child: '박서윤',
-  age: '6세 2개월',
-  date: '2026.05.28',
-  time: '14:00',
-  kind: '개별',
-  status: 'ANALYSIS_COMPLETED' as SessionStatus,
-  mlu: 4.27,
-}
-
-const MOCK_UTTERANCES: Utterance[] = [
-  { t: '00:12.4', speaker: 'CHILD',     text: '오늘 어린이집에서 친구랑 같이 블록 놀이 했어요.' },
-  { t: '00:18.1', speaker: 'THERAPIST', text: '어떤 블록을 만들었는지 더 자세히 얘기해줄래요?' },
-  { t: '00:24.7', speaker: 'CHILD',     text: '큰… 차고지를 만들었어요 빨간색이랑 파란색이랑.', edited: true },
-  { t: '00:29.0', speaker: 'UNKNOWN',   text: '(배경음 · 식별 불가)' },
-  { t: '00:32.2', speaker: 'THERAPIST', text: '차가 몇 대나 들어갈 수 있는 큰 차고지였구나.' },
-  { t: '00:38.9', speaker: 'CHILD',     text: '음… 다섯 대요. 아니 여섯 대.' },
-]
-
-const MOCK_METRICS: Metric[] = [
-  { label: 'MLU',    desc: '평균 발화 길이',    value: '4.27', delta: '+0.34', dir: 'up',   good: true },
-  { label: 'TTR',    desc: 'Type-Token Ratio', value: '0.62', delta: '−0.05', dir: 'down', good: false },
-  { label: '발화 수', desc: 'Total utterances', value: '128',  delta: '+22',   dir: 'up',   good: true },
-  { label: '어휘 수', desc: 'Unique words',     value: '79',   delta: '+9',    dir: 'up',   good: true },
-]
-
-const MOCK_SOAP: SoapNote = {
-  S: '아동은 어린이집 친구와의 블록 놀이 경험을 자발적으로 보고하였으며, 감정 표현(슬픔)도 함께 표현하였습니다.',
-  O: '60분 세션, MLU 4.27 (또래 평균 3.8–4.5 범위), TTR 0.62. 자발 발화 빈도 평소 대비 27% 증가.',
-  A: '발화 길이와 어휘 다양도는 또래 평균 범위 내에서 안정적 발달을 보이고 있으나, 복문 사용 빈도는 다소 낮음.',
-  P: '다음 세션에서 그림책 활용한 복문 산출 활동 진행. 보호자에게 가정 내 일상 대화에서 "왜냐하면", "그래서" 사용 모델링 안내.',
-}
 
 const STEPS = [
   { id: 1, label: '음성 업로드', sub: 'Upload' },
   { id: 2, label: 'AI 분석',    sub: 'Analyze' },
-  { id: 3, label: '전사 검토',   sub: 'Review' },
-  { id: 4, label: '리포트',      sub: 'Report' },
+  { id: 3, label: '전사 검토',  sub: 'Review' },
+  { id: 4, label: '리포트',     sub: 'Report' },
 ]
 
 function statusToStep(s: SessionStatus): Step {
@@ -60,17 +26,173 @@ function statusToStep(s: SessionStatus): Step {
   return 4
 }
 
-const speakerMap = {
+const speakerMap: Record<SpeakerRole, { label: string; bg: string; fg: string }> = {
   CHILD:     { label: '아동',   bg: 'bg-brand-100', fg: 'text-brand-700' },
   THERAPIST: { label: '치료사', bg: 'bg-blue-100',  fg: 'text-blue-700' },
   UNKNOWN:   { label: '미상',   bg: 'bg-ink-100',   fg: 'text-ink-600' },
 }
 
+const SOAP_LABELS: Record<string, string> = {
+  subjective: 'Subjective — 주관적 정보',
+  objective:  'Objective — 객관적 정보',
+  assessment: 'Assessment — 평가',
+  plan:       'Plan — 계획',
+}
+
 export default function SessionDetailPage() {
-  const { id: _id } = useParams()
+  const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { showToast } = useToast()
-  const [step, setStep] = useState<Step>(statusToStep(MOCK_SESSION.status))
+
+  const [session, setSession]       = useState<Session | null>(null)
+  const [child, setChild]           = useState<Child | null>(null)
+  const [step, setStep]             = useState<Step>(1)
+  const [loading, setLoading]       = useState(true)
+
+  const [uploading, setUploading]   = useState(false)
+  const [uploadStep, setUploadStep] = useState('')
+  const fileInputRef                = useRef<HTMLInputElement>(null)
+
+  const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null)
+  const pollRef                       = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const [transcript, setTranscript] = useState<Transcript | null>(null)
+  const [confirming, setConfirming] = useState(false)
+
+  const [soapNote, setSoapNote] = useState<SoapNote | null>(null)
+
+  const fetchSession = useCallback(async () => {
+    if (!id) return
+    const { data } = await sessionsApi.get(id)
+    setSession(data)
+    const s = statusToStep(data.status)
+    setStep(s)
+    return data
+  }, [id])
+
+  useEffect(() => {
+    if (!id) return
+    setLoading(true)
+    sessionsApi.get(id)
+      .then(async ({ data: sess }) => {
+        setSession(sess)
+        const s = statusToStep(sess.status)
+        setStep(s)
+
+        const [childRes] = await Promise.all([
+          childrenApi.get(sess.child_id),
+        ])
+        setChild(childRes.data)
+
+        if (s === 2) {
+          const jobRes = await analysisApi.list({ session_id: id })
+          if (jobRes.data.length > 0) setAnalysisJob(jobRes.data[0])
+        }
+        if (s === 3) {
+          const txRes = await transcriptApi.getBySession(id)
+          setTranscript(txRes.data)
+        }
+        if (s === 4) {
+          const [txRes, soapRes] = await Promise.all([
+            transcriptApi.getBySession(id),
+            soapNoteApi.list({ sessionId: id }),
+          ])
+          setTranscript(txRes.data)
+          if (soapRes.data.length > 0) setSoapNote(soapRes.data[0])
+        }
+      })
+      .catch(() => showToast({ title: '세션 정보를 불러오지 못했습니다', kind: 'error' }))
+      .finally(() => setLoading(false))
+  }, [id])
+
+  useEffect(() => {
+    if (step !== 2) {
+      if (pollRef.current) clearInterval(pollRef.current)
+      return
+    }
+    pollRef.current = setInterval(async () => {
+      if (!id) return
+      const { data: sess } = await sessionsApi.get(id)
+      setSession(sess)
+      const newStep = statusToStep(sess.status)
+      if (newStep !== 2) {
+        setStep(newStep)
+        if (pollRef.current) clearInterval(pollRef.current)
+        if (newStep === 3) {
+          transcriptApi.getBySession(id).then(({ data }) => setTranscript(data))
+        }
+      } else {
+        const jobRes = await analysisApi.list({ session_id: id })
+        if (jobRes.data.length > 0) setAnalysisJob(jobRes.data[0])
+      }
+    }, 10_000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [step, id])
+
+  const handleFileUpload = async (file: File) => {
+    if (!id) return
+    setUploading(true)
+    try {
+      setUploadStep('presigned URL 발급 중…')
+      const { data: presigned } = await audioApi.presignedUrl({
+        file_name:    file.name,
+        content_type: file.type,
+        session_id:   id,
+        file_size:    file.size,
+      })
+
+      setUploadStep('S3에 업로드 중…')
+      await audioApi.uploadToS3(presigned.upload_url, file)
+
+      setUploadStep('업로드 확인 중…')
+      const { data: audioFile } = await audioApi.complete({
+        session_id: id,
+        s3_key:     presigned.s3_key,
+      })
+
+      setUploadStep('AI 분석 요청 중…')
+      const { data: job } = await analysisApi.create({
+        session_id:    id,
+        audio_file_id: audioFile.id,
+      })
+      setAnalysisJob(job)
+
+      showToast({ title: '음성 파일이 업로드되었습니다', body: 'AI 분석을 시작합니다.', kind: 'success' })
+      await fetchSession()
+    } catch {
+      showToast({ title: '업로드에 실패했습니다', body: '파일 형식 및 네트워크를 확인해주세요.', kind: 'error' })
+    } finally {
+      setUploading(false)
+      setUploadStep('')
+    }
+  }
+
+  const handleConfirmTranscript = async () => {
+    if (!transcript?.result_id || !id) return
+    setConfirming(true)
+    try {
+      await transcriptApi.confirm(transcript.result_id)
+      await soapNoteApi.generate({ sessionId: id, transcriptId: transcript.result_id })
+      showToast({ title: '전사가 확정되었습니다', body: 'SOAP Note를 생성하고 있습니다.', kind: 'success' })
+      const [sessData, soapRes] = await Promise.all([
+        fetchSession(),
+        soapNoteApi.list({ sessionId: id }),
+      ])
+      if (soapRes.data.length > 0) setSoapNote(soapRes.data[0])
+      if (sessData) setStep(statusToStep(sessData.status))
+    } catch {
+      showToast({ title: '전사 확정에 실패했습니다', kind: 'error' })
+    } finally {
+      setConfirming(false)
+    }
+  }
+
+  if (loading) {
+    return <div className="px-8 pt-7 text-[13px] text-ink-400">불러오는 중…</div>
+  }
+  if (!session) {
+    return <div className="px-8 pt-7 text-[13px] text-ink-500">세션을 찾을 수 없습니다.</div>
+  }
 
   return (
     <div>
@@ -84,10 +206,10 @@ export default function SessionDetailPage() {
         </button>
         <div>
           <h1 className="text-2xl font-bold text-ink-800 tracking-tight">
-            세션 #{MOCK_SESSION.id} — {MOCK_SESSION.child}
+            세션 — {child?.name ?? '—'}
           </h1>
           <p className="text-[13px] text-ink-500 mt-0.5">
-            {MOCK_SESSION.date} {MOCK_SESSION.time} · {MOCK_SESSION.kind} · {MOCK_SESSION.age}
+            {formatDate(session.session_date)} · {session.session_type ?? '—'}
           </p>
         </div>
       </div>
@@ -97,11 +219,11 @@ export default function SessionDetailPage() {
         <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-6">
           <div className="flex items-center">
             {STEPS.map((s, i) => {
-              const done    = step > s.id
-              const active  = step === s.id
+              const done   = step > s.id
+              const active = step === s.id
               return (
                 <div key={s.id} className="flex items-center flex-1 last:flex-none">
-                  <div className="flex flex-col items-center gap-2 cursor-pointer" onClick={() => { if (done) setStep(s.id as Step) }}>
+                  <div className="flex flex-col items-center gap-2">
                     <div className={cn(
                       'w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold border-2 transition-all',
                       done   ? 'bg-brand-700 border-brand-700 text-white' :
@@ -124,119 +246,175 @@ export default function SessionDetailPage() {
           </div>
         </div>
 
-        {/* Step content */}
+        {/* Step 1 — Upload */}
         {step === 1 && (
           <div className="bg-white rounded-xl border border-ink-200 shadow-sm">
             <div className="px-6 py-4 border-b border-ink-100">
               <p className="text-[16px] font-semibold text-ink-800">음성 파일 업로드</p>
             </div>
             <div className="p-6">
-              <div className="border-2 border-dashed border-ink-200 rounded-xl p-10 text-center hover:border-brand-400 transition-colors cursor-pointer"
-                onClick={() => { setStep(2); showToast({ title: '음성 파일이 업로드되었습니다', kind: 'success' }) }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*,.wav,.mp3,.m4a"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) handleFileUpload(file)
+                }}
+              />
+              <div
+                className={cn(
+                  'border-2 border-dashed rounded-xl p-10 text-center transition-colors',
+                  uploading ? 'border-brand-400 bg-brand-25 cursor-wait' : 'border-ink-200 hover:border-brand-400 cursor-pointer',
+                )}
+                onClick={() => !uploading && fileInputRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  if (uploading) return
+                  const file = e.dataTransfer.files?.[0]
+                  if (file) handleFileUpload(file)
+                }}
+              >
                 <div className="w-14 h-14 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600 mx-auto mb-3">
-                  <Icon name="upload" size={24} strokeWidth={1.8} />
+                  {uploading
+                    ? <div className="w-6 h-6 rounded-full border-2 border-brand-200 border-t-brand-700" style={{ animation: 'spin 0.8s linear infinite' }} />
+                    : <Icon name="upload" size={24} strokeWidth={1.8} />
+                  }
                 </div>
-                <p className="font-semibold text-ink-800">파일을 드래그하거나 클릭해서 업로드</p>
-                <p className="text-[12px] text-ink-500 mt-1">WAV, MP3, M4A · 최대 500MB</p>
+                {uploading ? (
+                  <>
+                    <p className="font-semibold text-ink-800">업로드 중…</p>
+                    <p className="text-[12px] text-ink-500 mt-1">{uploadStep}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold text-ink-800">파일을 드래그하거나 클릭해서 업로드</p>
+                    <p className="text-[12px] text-ink-500 mt-1">WAV, MP3, M4A · 최대 500MB</p>
+                  </>
+                )}
               </div>
             </div>
           </div>
         )}
 
+        {/* Step 2 — Analysis */}
         {step === 2 && (
           <div className="bg-white rounded-xl border border-ink-200 shadow-sm">
             <div className="px-6 py-4 border-b border-ink-100">
-              <p className="text-[16px] font-semibold text-ink-800">AI 분석 중</p>
+              <p className="text-[16px] font-semibold text-ink-800">
+                {session.status === 'FAILED' ? 'AI 분석 실패' : 'AI 분석 중'}
+              </p>
             </div>
             <div className="p-6 text-center">
-              <div className="w-16 h-16 rounded-full border-4 border-brand-200 border-t-brand-700 mx-auto mb-4"
-                style={{ animation: 'spin 1s linear infinite' }} />
-              <p className="font-semibold text-ink-800">음성을 분석하고 있습니다</p>
-              <p className="text-[12px] text-ink-500 mt-1">평균 2–3분 소요됩니다</p>
-              <button
-                onClick={() => { setStep(3); showToast({ title: '분석이 완료되었습니다', kind: 'success' }) }}
-                className="mt-6 px-4 py-2 bg-brand-50 text-brand-700 rounded-lg text-[13px] font-semibold hover:bg-brand-100 transition-colors"
-              >
-                (데모) 분석 완료로 이동
-              </button>
+              {session.status === 'FAILED' ? (
+                <>
+                  <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-red-500 mx-auto mb-4">
+                    <Icon name="alert" size={28} strokeWidth={1.8} />
+                  </div>
+                  <p className="font-semibold text-ink-800">분석 중 오류가 발생했습니다</p>
+                  <p className="text-[12px] text-ink-500 mt-1">
+                    {analysisJob?.error_message ?? '알 수 없는 오류'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 rounded-full border-4 border-brand-200 border-t-brand-700 mx-auto mb-4"
+                    style={{ animation: 'spin 1s linear infinite' }} />
+                  <p className="font-semibold text-ink-800">음성을 분석하고 있습니다</p>
+                  <p className="text-[12px] text-ink-500 mt-1">
+                    {analysisJob?.current_stage
+                      ? `현재 단계: ${analysisJob.current_stage}`
+                      : '평균 2–3분 소요됩니다'}
+                  </p>
+                  {analysisJob && analysisJob.progress > 0 && (
+                    <div className="mt-4 max-w-[240px] mx-auto">
+                      <div className="h-1.5 bg-ink-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-brand-700 transition-all"
+                          style={{ width: `${analysisJob.progress}%` }}
+                        />
+                      </div>
+                      <p className="text-[11px] text-ink-400 mt-1">{analysisJob.progress}%</p>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-ink-400 mt-4">페이지를 벗어나도 분석은 계속됩니다.</p>
+                </>
+              )}
             </div>
           </div>
         )}
 
-        {step === 3 && (
-          <>
-            {/* Metrics */}
-            <div className="grid grid-cols-4 gap-4">
-              {MOCK_METRICS.map((m) => (
-                <div key={m.label} className="bg-white rounded-xl border border-ink-200 shadow-sm p-4">
-                  <p className="text-[11px] font-semibold text-ink-500 uppercase tracking-wide">{m.label}</p>
-                  <p className="text-[10px] text-ink-400 mb-2">{m.desc}</p>
-                  <p className="text-2xl font-bold text-ink-800 font-mono-num">{m.value}</p>
-                  <p className={cn('text-[11px] font-semibold mt-1', m.good ? 'text-brand-500' : 'text-red-500')}>
-                    {m.dir === 'up' ? '▲' : '▼'} {m.delta}
-                  </p>
-                </div>
-              ))}
+        {/* Step 3 — Transcript review */}
+        {step === 3 && transcript && (
+          <div className="bg-white rounded-xl border border-ink-200 shadow-sm">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100">
+              <p className="text-[16px] font-semibold text-ink-800">전사 검토</p>
+              <button
+                onClick={handleConfirmTranscript}
+                disabled={confirming}
+                className="flex items-center gap-1.5 px-4 py-2 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 transition-colors disabled:opacity-60"
+              >
+                <Icon name="chevronRight" size={14} />
+                {confirming ? '처리 중…' : '리포트 보기'}
+              </button>
             </div>
-
-            {/* Transcript */}
-            <div className="bg-white rounded-xl border border-ink-200 shadow-sm">
-              <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100">
-                <p className="text-[16px] font-semibold text-ink-800">전사 검토</p>
-                <button
-                  onClick={() => { setStep(4); showToast({ title: '전사가 저장되었습니다', kind: 'success' }) }}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 transition-colors"
-                >
-                  <Icon name="chevronRight" size={14} />리포트 보기
-                </button>
-              </div>
-              <div className="p-6 flex flex-col gap-3">
-                {MOCK_UTTERANCES.map((u, i) => {
-                  const s = speakerMap[u.speaker]
+            <div className="p-6 flex flex-col gap-3">
+              {transcript.segments.length === 0 ? (
+                <p className="text-[13px] text-ink-400 text-center py-8">전사 결과가 없습니다.</p>
+              ) : (
+                transcript.segments.map((seg) => {
+                  const role = seg.speaker_role ?? 'UNKNOWN'
+                  const s = speakerMap[role]
+                  const text = seg.final_text ?? seg.edited_text ?? seg.original_text ?? ''
+                  const isEdited = !!seg.edited_text && seg.edited_text !== seg.original_text
                   return (
-                    <div key={i} className="flex gap-3 items-start">
-                      <span className="text-[11px] font-mono text-ink-400 pt-0.5 w-14 flex-shrink-0">{u.t}</span>
+                    <div key={seg.id} className="flex gap-3 items-start">
+                      <span className="text-[11px] font-mono text-ink-400 pt-0.5 w-14 flex-shrink-0">
+                        {formatSeconds(seg.start_time)}
+                      </span>
                       <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-md flex-shrink-0', s.bg, s.fg)}>
                         {s.label}
                       </span>
-                      <p className={cn('text-[13px] leading-relaxed', u.edited ? 'text-brand-700' : 'text-ink-700')}>
-                        {u.text}
+                      <p className={cn('text-[13px] leading-relaxed', isEdited ? 'text-brand-700' : 'text-ink-700')}>
+                        {text}
                       </p>
-                      {u.edited && (
+                      {isEdited && (
                         <span className="text-[10px] text-brand-500 font-semibold mt-0.5 flex-shrink-0">수정됨</span>
                       )}
                     </div>
                   )
-                })}
-              </div>
+                })
+              )}
             </div>
-          </>
+          </div>
         )}
 
+        {/* Step 4 — SOAP Note / Report */}
         {step === 4 && (
           <div className="bg-white rounded-xl border border-ink-200 shadow-sm">
             <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100">
               <p className="text-[16px] font-semibold text-ink-800">SOAP Note</p>
-              <button className="flex items-center gap-1.5 px-4 py-2 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 transition-colors">
-                <Icon name="download" size={14} />PDF 다운로드
-              </button>
             </div>
-            <div className="p-6 grid grid-cols-2 gap-4">
-              {(Object.entries(MOCK_SOAP) as [keyof SoapNote, string][]).map(([key, val]) => {
-                const labels: Record<keyof SoapNote, string> = {
-                  S: 'Subjective — 주관적 정보',
-                  O: 'Objective — 객관적 정보',
-                  A: 'Assessment — 평가',
-                  P: 'Plan — 계획',
-                }
-                return (
+            {soapNote ? (
+              <div className="p-6 grid grid-cols-2 gap-4">
+                {(['subjective', 'objective', 'assessment', 'plan'] as const).map((key) => (
                   <div key={key} className="bg-ink-50 rounded-xl p-4">
-                    <p className="text-[11px] font-bold text-brand-700 uppercase tracking-wide mb-1.5">{labels[key]}</p>
-                    <p className="text-[13px] text-ink-700 leading-relaxed">{val}</p>
+                    <p className="text-[11px] font-bold text-brand-700 uppercase tracking-wide mb-1.5">
+                      {SOAP_LABELS[key]}
+                    </p>
+                    <p className="text-[13px] text-ink-700 leading-relaxed whitespace-pre-wrap">
+                      {soapNote[key] ?? '—'}
+                    </p>
                   </div>
-                )
-              })}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-12 text-center text-[13px] text-ink-400">
+                SOAP Note를 불러오는 중…
+              </div>
+            )}
           </div>
         )}
       </div>

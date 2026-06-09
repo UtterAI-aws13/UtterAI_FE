@@ -1,43 +1,20 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { childrenApi, type Child } from '@/api/children'
 import { Icon } from '@/components/common/Icon'
 import { useToast } from '@/hooks/useToast'
-import { cn } from '@/lib/utils'
-
-// Phase 3에서 BE Child 타입으로 교체 예정
-type ChildRow = {
-  id: string
-  name: string
-  dob: string
-  age: string
-  gender: string
-  registered: string
-  sessions: number
-  lastSession: string
-  primaryGoal: string
-}
-
-const MOCK_CHILDREN: ChildRow[] = [
-  { id: '1', name: '박서윤', dob: '2020.04.15', age: '6세 2개월',  gender: 'F', registered: '2024.10.02', sessions: 24, lastSession: '2026.05.28', primaryGoal: '표현언어 지연' },
-  { id: '2', name: '이하준', dob: '2020.09.20', age: '5세 8개월',  gender: 'M', registered: '2025.01.14', sessions: 18, lastSession: '2026.05.28', primaryGoal: '조음 오류' },
-  { id: '3', name: '최예나', dob: '2021.06.10', age: '4세 11개월', gender: 'F', registered: '2025.03.22', sessions: 12, lastSession: '2026.05.27', primaryGoal: '언어 발달 지연' },
-  { id: '4', name: '정도윤', dob: '2019.04.03', age: '7세 1개월',  gender: 'M', registered: '2024.06.08', sessions: 32, lastSession: '2026.05.27', primaryGoal: '말 유창성' },
-  { id: '5', name: '강하린', dob: '2020.12.18', age: '5세 4개월',  gender: 'F', registered: '2025.02.11', sessions: 16, lastSession: '2026.05.26', primaryGoal: '어휘 확장' },
-  { id: '6', name: '윤시아', dob: '2019.10.05', age: '6세 7개월',  gender: 'F', registered: '2024.08.30', sessions: 28, lastSession: '2026.05.26', primaryGoal: '문장 구성' },
-  { id: '7', name: '한이서', dob: '2021.12.22', age: '4세 5개월',  gender: 'M', registered: '2025.05.04', sessions: 6,  lastSession: '2026.05.25', primaryGoal: '초기 어휘' },
-  { id: '8', name: '서지호', dob: '2020.02.14', age: '6세 3개월',  gender: 'M', registered: '2024.11.19', sessions: 22, lastSession: '2026.05.24', primaryGoal: '화용 언어' },
-]
+import { cn, computeAge, formatDate } from '@/lib/utils'
 
 const GENDER_LABEL: Record<string, string> = { M: '남아', F: '여아', U: '미입력' }
 
-function avatarClass(g: string) {
+function avatarClass(g: string | null) {
   return cn(
     'w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold flex-shrink-0',
     g === 'F' ? 'bg-pink-100 text-pink-700' : g === 'M' ? 'bg-blue-100 text-blue-700' : 'bg-ink-100 text-ink-600',
   )
 }
 
-function genderChipClass(g: string) {
+function genderChipClass(g: string | null) {
   return cn(
     'inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold',
     g === 'F' ? 'bg-pink-100 text-pink-700' : g === 'M' ? 'bg-blue-100 text-blue-700' : 'bg-ink-100 text-ink-600',
@@ -47,27 +24,39 @@ function genderChipClass(g: string) {
 export default function ChildrenPage() {
   const navigate = useNavigate()
   const { showToast } = useToast()
+  const [children, setChildren] = useState<Child[]>([])
+  const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | 'new'>('all')
-  const [children, setChildren] = useState(MOCK_CHILDREN)
+
+  useEffect(() => {
+    childrenApi.list()
+      .then(({ data }) => setChildren(data))
+      .catch(() => showToast({ title: '아동 목록을 불러오지 못했습니다', kind: 'error' }))
+      .finally(() => setLoading(false))
+  }, [])
 
   const filtered = children.filter((c) => {
     if (query && !c.name.includes(query)) return false
     if (filter === 'new') {
-      const reg = new Date(c.registered.replaceAll('.', '-'))
-      if (reg < new Date('2026-03-01')) return false
+      if (new Date(c.created_at) < new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)) return false
     }
     return true
   })
 
-  const handleDelete = (c: ChildRow, e: React.MouseEvent) => {
+  const handleDelete = async (c: Child, e: React.MouseEvent) => {
     e.stopPropagation()
-    setChildren((cs) => cs.filter((x) => x.id !== c.id))
-    showToast({ title: '아동 정보가 삭제되었습니다', body: `${c.name} 아동 정보가 삭제되었어요.`, kind: 'success' })
+    try {
+      await childrenApi.delete(c.id)
+      setChildren((cs) => cs.filter((x) => x.id !== c.id))
+      showToast({ title: '아동 정보가 삭제되었습니다', body: `${c.name} 아동 정보가 삭제되었어요.`, kind: 'success' })
+    } catch {
+      showToast({ title: '삭제에 실패했습니다', kind: 'error' })
+    }
   }
 
   const CHIPS = [
-    { label: '전체', value: 'all' as const },
+    { label: '전체',     value: 'all' as const },
     { label: '최근 등록', value: 'new' as const },
   ]
 
@@ -79,7 +68,7 @@ export default function ChildrenPage() {
           <p className="text-[13px] text-ink-500 mt-1">총 {children.length}명의 아동</p>
         </div>
         <button
-          onClick={() => showToast({ title: '아동 등록 기능', body: 'API 연동 후 사용 가능합니다.', kind: 'info' })}
+          onClick={() => showToast({ title: '아동 등록 기능', body: '준비 중입니다.', kind: 'info' })}
           className="flex items-center gap-2 px-4 py-2 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 transition-colors shadow-md"
         >
           <Icon name="plus" size={15} />아동 등록
@@ -119,7 +108,9 @@ export default function ChildrenPage() {
             </div>
           </div>
 
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="py-16 text-center text-[13px] text-ink-400">불러오는 중…</div>
+          ) : filtered.length === 0 ? (
             <div className="py-16 text-center">
               <div className="w-16 h-16 rounded-2xl bg-brand-50 flex items-center justify-center text-brand-600 mx-auto mb-4">
                 <Icon name="users" size={28} strokeWidth={1.8} />
@@ -138,9 +129,8 @@ export default function ChildrenPage() {
                   <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">이름</th>
                   <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">생년월일</th>
                   <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">성별</th>
-                  <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">주 목표</th>
+                  <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">메모</th>
                   <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">등록일</th>
-                  <th className="text-right px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">세션 수</th>
                   <th className="text-right px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">액션</th>
                 </tr>
               </thead>
@@ -156,18 +146,16 @@ export default function ChildrenPage() {
                         <div className={avatarClass(c.gender)}>{c.name[0]}</div>
                         <div>
                           <p className="font-semibold text-ink-800">{c.name}</p>
-                          <p className="text-[11px] text-ink-500 mt-0.5">{c.age}</p>
+                          <p className="text-[11px] text-ink-500 mt-0.5">{computeAge(c.birth_date)}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-5 py-3 font-mono-num text-ink-500">{c.dob}</td>
-                    <td className="px-5 py-3"><span className={genderChipClass(c.gender)}>{GENDER_LABEL[c.gender]}</span></td>
-                    <td className="px-5 py-3 text-ink-600">{c.primaryGoal}</td>
-                    <td className="px-5 py-3 font-mono-num text-ink-500">{c.registered}</td>
-                    <td className="px-5 py-3 text-right">
-                      <span className="font-mono-num font-semibold text-ink-800">{c.sessions}</span>
-                      <span className="text-[11px] text-ink-500 ml-1">회</span>
+                    <td className="px-5 py-3 font-mono-num text-ink-500">{formatDate(c.birth_date)}</td>
+                    <td className="px-5 py-3">
+                      <span className={genderChipClass(c.gender)}>{GENDER_LABEL[c.gender ?? 'U'] ?? '미입력'}</span>
                     </td>
+                    <td className="px-5 py-3 text-ink-500 max-w-[180px] truncate">{c.memo ?? '—'}</td>
+                    <td className="px-5 py-3 font-mono-num text-ink-500">{formatDate(c.created_at)}</td>
                     <td className="px-5 py-3 text-right">
                       <div className="inline-flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button

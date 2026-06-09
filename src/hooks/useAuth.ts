@@ -51,6 +51,7 @@ export function useLogout() {
   const navigate = useNavigate()
 
   return () => {
+    authApi.logout().catch(() => {})
     logout()
     navigate('/login')
   }

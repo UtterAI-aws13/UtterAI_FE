@@ -1,6 +1,6 @@
 import { apiClient } from './client'
 
-export type ReportStatus = 'READY' | 'REGENERATING' | 'DELETED'
+export type ReportStatus = 'DRAFT' | 'PUBLISHED'
 
 export interface Report {
   id: string
@@ -17,32 +17,10 @@ export interface Report {
   updated_at: string
 }
 
-export interface CreateReportPayload {
-  session_id: string
-  result_id: string
-  template_type: string
-}
-
-export interface UpdateReportPayload {
-  title?: string
-  content?: string
-  memo?: string
-}
-
 export const reportsApi = {
-  list: (params?: { childId?: string }) =>
-    apiClient.get<Report[]>('/reports', { params }),
-
-  get: (id: string) =>
-    apiClient.get<Report>(`/reports/${id}`),
-
-  create: (payload: CreateReportPayload) =>
-    apiClient.post<Report>('/reports', payload),
-
-  update: (id: string, payload: UpdateReportPayload) =>
+  list:     (params?: { childId?: string }) => apiClient.get<Report[]>('/reports', { params }),
+  get:      (id: string)                    => apiClient.get<Report>(`/reports/${id}`),
+  update:   (id: string, payload: { title?: string; content?: string; memo?: string }) =>
     apiClient.patch<Report>(`/reports/${id}`, payload),
-
-  // plain text 파일 다운로드
-  download: (id: string) =>
-    apiClient.get(`/reports/${id}/download`, { responseType: 'blob' }),
+  download: (id: string)                    => apiClient.get(`/reports/${id}/download`, { responseType: 'blob' }),
 }

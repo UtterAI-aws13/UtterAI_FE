@@ -1,22 +1,13 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-
-export interface User {
-  id: string
-  email: string
-  name: string
-  role: string
-  status: string
-  created_at: string
-  updated_at: string
-}
+import type { User } from '@/api/auth'
 
 interface AuthState {
   accessToken: string | null
   refreshToken: string | null
   user: User | null
   isAuthenticated: boolean
-  setTokens: (accessToken: string, refreshToken: string) => void
+  setTokens: (access: string, refresh: string) => void
   setUser: (user: User) => void
   logout: () => void
 }
