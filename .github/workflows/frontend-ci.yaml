@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - dev
-      - main
+    #  - main (main merge 이전까지 임시로 막음)
     paths:
       - "src/**"
       - "public/**"
@@ -22,7 +22,7 @@ on:
   push:
     branches:
       - dev
-      - main
+    #  - main (main merge 이전까지 임시로 막음)
       - "feature/**"
     paths:
       - "src/**"
