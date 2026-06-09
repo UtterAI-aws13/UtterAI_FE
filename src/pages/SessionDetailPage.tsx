@@ -115,10 +115,13 @@ export default function SessionDetailPage() {
           if (resultRes.data.length > 0) {
             const result = resultRes.data[0]
             setInterpretationText(result.interpretation_text)
-            try {
-              const speakerRes = await analysisResultApi.getSpeakers(result.id)
-              setSpeakers(speakerRes.data.speakers)
-            } catch { /* optional */ }
+            const resultId = result.id ?? result.result_id
+            if (resultId) {
+              try {
+                const speakerRes = await analysisResultApi.getSpeakers(resultId)
+                setSpeakers(speakerRes.data.speakers)
+              } catch { /* optional */ }
+            }
           }
         }
       })
