@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { reportsApi, type Report } from '@/api/reports'
 import { Icon } from '@/components/common/Icon'
+import { ReportEditModal } from '@/components/common/ReportEditModal'
 import { cn, formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 
@@ -10,6 +11,7 @@ export default function ReportsPage() {
   const { showToast } = useToast()
   const [reports, setReports] = useState<Report[]>([])
   const [loading, setLoading] = useState(true)
+  const [editingReport, setEditingReport] = useState<Report | null>(null)
 
   useEffect(() => {
     reportsApi.list()
@@ -77,18 +79,28 @@ export default function ReportsPage() {
                     </td>
                     <td className="px-5 py-3 font-mono-num text-ink-500">{formatDate(r.created_at)}</td>
                     <td className="px-5 py-3 text-right">
-                      <div className="inline-flex gap-2">
+                      <div className="inline-flex gap-2 items-center">
                         <button
                           onClick={() => navigate(`/sessions/${r.session_id}`)}
                           className="inline-flex items-center gap-1 text-[12px] text-brand-600 font-semibold hover:text-brand-800"
                         >
                           보기 <Icon name="chevronRight" size={12} strokeWidth={2.2} />
                         </button>
+                        {r.status !== 'PUBLISHED' && (
+                          <button
+                            onClick={() => setEditingReport(r)}
+                            className="w-6 h-6 flex items-center justify-center rounded-md text-ink-400 hover:bg-ink-100 hover:text-ink-700 transition-colors"
+                            title="편집"
+                          >
+                            <Icon name="edit" size={13} />
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDownload(r)}
-                          className="inline-flex items-center gap-1 text-[12px] text-ink-500 font-semibold hover:text-ink-700"
+                          className="w-6 h-6 flex items-center justify-center rounded-md text-ink-400 hover:bg-ink-100 hover:text-ink-700 transition-colors"
+                          title="다운로드"
                         >
-                          <Icon name="download" size={12} strokeWidth={2.2} />
+                          <Icon name="download" size={13} strokeWidth={2.2} />
                         </button>
                       </div>
                     </td>
@@ -99,6 +111,14 @@ export default function ReportsPage() {
           </div>
         )}
       </div>
+
+      {editingReport && (
+        <ReportEditModal
+          report={editingReport}
+          onClose={() => setEditingReport(null)}
+          onSaved={(updated) => setReports((rs) => rs.map((r) => r.id === updated.id ? updated : r))}
+        />
+      )}
     </div>
   )
 }
