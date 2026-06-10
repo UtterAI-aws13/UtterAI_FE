@@ -95,7 +95,7 @@ export default function SessionDetailPage() {
         setSession(sess)
         const s = statusToStep(sess.status)
         setStep(s)
-        await patientsApi.get(sess.patient_ref_id).then(({ data }) => { if (!ignore) setPatient(data) }).catch(() => {})
+        await patientsApi.getByRef(sess.patient_ref_id).then(({ data }) => { if (!ignore) setPatient(data) }).catch(() => {})
         if (ignore) return
         if (s === 2) {
           const jobRes = await analysisApi.list({ session_id: id })
