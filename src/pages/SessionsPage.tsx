@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sessionsApi, type Session, type SessionStatus } from '@/api/sessions'
-import { childrenApi, type Child } from '@/api/children'
+import { patientsApi, type Patient } from '@/api/patients'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Icon } from '@/components/common/Icon'
 import { cn, formatDate } from '@/lib/utils'
@@ -19,18 +19,18 @@ export default function SessionsPage() {
   const navigate = useNavigate()
   const { showToast } = useToast()
   const [sessions, setSessions] = useState<Session[]>([])
-  const [childMap, setChildMap] = useState<Record<string, Child>>({})
+  const [patientMap, setPatientMap] = useState<Record<string, Patient>>({})
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<SessionStatus | 'all'>('all')
   const [query, setQuery] = useState('')
 
   useEffect(() => {
-    Promise.all([sessionsApi.list(), childrenApi.list()])
-      .then(([sessRes, childRes]) => {
+    Promise.all([sessionsApi.list(), patientsApi.list()])
+      .then(([sessRes, patientRes]) => {
         setSessions(sessRes.data)
-        const map: Record<string, Child> = {}
-        childRes.data.forEach((c) => { map[c.id] = c })
-        setChildMap(map)
+        const map: Record<string, Patient> = {}
+        patientRes.data.forEach((p) => { map[p.id] = p })
+        setPatientMap(map)
       })
       .catch(() => showToast({ title: '세션 목록을 불러오지 못했습니다', kind: 'error' }))
       .finally(() => setLoading(false))
@@ -39,8 +39,8 @@ export default function SessionsPage() {
   const filtered = sessions.filter((s) => {
     if (statusFilter !== 'all' && s.status !== statusFilter) return false
     if (query) {
-      const childName = childMap[s.child_id]?.name ?? ''
-      if (!childName.includes(query)) return false
+      const patientName = patientMap[s.patient_ref_id]?.name ?? ''
+      if (!patientName.includes(query)) return false
     }
     return true
   })
@@ -71,7 +71,7 @@ export default function SessionsPage() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="아동 이름 검색…"
+                placeholder="환자 이름 검색…"
                 className="h-9 pl-8 pr-3 w-[220px] border border-ink-200 rounded-lg text-[13px] outline-none focus:border-brand-500 font-sans"
               />
             </div>
@@ -107,7 +107,7 @@ export default function SessionsPage() {
             <table className="w-full text-[13px] border-collapse">
               <thead>
                 <tr className="bg-ink-50">
-                  {['#', '아동', '날짜', '유형', '상태'].map((h) => (
+                  {['#', '환자', '날짜', '유형', '상태'].map((h) => (
                     <th key={h} className="py-2.5 px-5 text-left text-[11px] font-semibold text-ink-500 uppercase tracking-wider border-b border-ink-100">
                       {h}
                     </th>
@@ -116,7 +116,7 @@ export default function SessionsPage() {
               </thead>
               <tbody>
                 {filtered.map((s) => {
-                  const child = childMap[s.child_id]
+                  const patient = patientMap[s.patient_ref_id]
                   return (
                     <tr
                       key={s.id}
@@ -129,9 +129,9 @@ export default function SessionsPage() {
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[13px] font-bold">
-                            {child ? child.name[0] : '?'}
+                            {patient ? patient.name[0] : '?'}
                           </div>
-                          <p className="font-semibold text-ink-800">{child?.name ?? s.child_id.slice(-8)}</p>
+                          <p className="font-semibold text-ink-800">{patient?.name ?? s.patient_ref_id.slice(-8)}</p>
                         </div>
                       </td>
                       <td className="px-5 py-3 font-mono-num text-ink-500">{formatDate(s.session_date)}</td>
