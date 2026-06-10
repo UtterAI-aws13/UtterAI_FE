@@ -46,9 +46,6 @@ export default function App() {
         <Route path="/reports"        element={<ReportsPage />} />
         <Route path="/templates"      element={<TemplatesPage />} />
         <Route path="/settings"       element={<SettingsPage />} />
-        {/* Legacy redirect */}
-        <Route path="/children"       element={<Navigate to="/patients" replace />} />
-        <Route path="/children/:id"   element={<Navigate to="/patients" replace />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

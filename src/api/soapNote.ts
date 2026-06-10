@@ -19,7 +19,7 @@ export const soapNoteApi = {
   generate: (payload: { sessionId: string; transcriptId: string; clinicalAnalysisJobId?: string }) =>
     apiClient.post<SoapNote>('/soap-notes/generate', payload),
 
-  list: (params?: { sessionId?: string; childId?: string }) =>
+  list: (params?: { sessionId?: string; patientId?: string }) =>
     apiClient.get<SoapNote[]>('/soap-notes', { params }),
 
   get:      (id: string) => apiClient.get<SoapNote>(`/soap-notes/${id}`),
