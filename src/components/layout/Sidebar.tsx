@@ -7,7 +7,7 @@ import { useLogout } from '@/hooks/useAuth'
 const NAV_ITEMS = [
   { to: '/dashboard', label: '대시보드',  icon: 'grid'     as const },
   { to: '/patients',  label: '환자 관리', icon: 'users'    as const },
-  { to: '/sessions',  label: '세션 관리', icon: 'audio'    as const, badge: 3 },
+  { to: '/sessions',  label: '세션 관리', icon: 'audio'    as const },
   { to: '/reports',   label: '리포트',   icon: 'report'   as const },
   { to: '/templates', label: '템플릿 관리', icon: 'fileText' as const },
 ]
