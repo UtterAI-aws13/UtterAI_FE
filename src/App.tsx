@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
+import { ToastContainer } from '@/components/common/ToastContainer'
 import { useAuthStore } from '@/store/authStore'
 import LoginPage from '@/pages/LoginPage'
 import SignupPage from '@/pages/SignupPage'
@@ -20,6 +21,8 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <>
+    <ToastContainer />
     <Routes>
       {/* Public */}
       <Route path="/login"  element={<LoginPage />} />
@@ -50,5 +53,6 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    </>
   )
 }
