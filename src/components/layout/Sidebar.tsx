@@ -56,11 +56,6 @@ export function Sidebar() {
         >
           <Icon name={item.icon} size={16} />
           {item.label}
-          {item.badge && (
-            <span className="ml-auto text-[10px] font-bold bg-brand-100 text-brand-700 px-1.5 py-px rounded-full">
-              {item.badge}
-            </span>
-          )}
         </NavLink>
       ))}
 
