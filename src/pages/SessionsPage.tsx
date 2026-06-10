@@ -25,15 +25,18 @@ export default function SessionsPage() {
   const [query, setQuery] = useState('')
 
   useEffect(() => {
+    let ignore = false
     Promise.all([sessionsApi.list(), patientsApi.list()])
       .then(([sessRes, patientRes]) => {
+        if (ignore) return
         setSessions(sessRes.data)
         const map: Record<string, Patient> = {}
         patientRes.data.forEach((p) => { map[p.id] = p })
         setPatientMap(map)
       })
-      .catch(() => showToast({ title: '세션 목록을 불러오지 못했습니다', kind: 'error' }))
-      .finally(() => setLoading(false))
+      .catch(() => { if (!ignore) showToast({ title: '세션 목록을 불러오지 못했습니다', kind: 'error' }) })
+      .finally(() => { if (!ignore) setLoading(false) })
+    return () => { ignore = true }
   }, [])
 
   const filtered = sessions.filter((s) => {

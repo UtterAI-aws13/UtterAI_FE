@@ -87,41 +87,48 @@ export default function SessionDetailPage() {
 
   useEffect(() => {
     if (!id) return
+    let ignore = false
     setLoading(true)
     sessionsApi.get(id)
       .then(async ({ data: sess }) => {
+        if (ignore) return
         setSession(sess)
         const s = statusToStep(sess.status)
         setStep(s)
-        await patientsApi.get(sess.patient_ref_id).then(({ data }) => setPatient(data)).catch(() => {})
+        await patientsApi.get(sess.patient_ref_id).then(({ data }) => { if (!ignore) setPatient(data) }).catch(() => {})
+        if (ignore) return
         if (s === 2) {
           const jobRes = await analysisApi.list({ session_id: id })
-          if (jobRes.data.length > 0) setAnalysisJob(jobRes.data[0])
+          if (!ignore && jobRes.data.length > 0) setAnalysisJob(jobRes.data[0])
         }
         if (s === 3) {
           const txRes = await transcriptsApi.getBySession(id)
+          if (ignore) return
           setTranscript(txRes.data)
           const segRes = await transcriptsApi.listSegments(txRes.data.id)
-          setSegments(segRes.data)
+          if (!ignore) setSegments(segRes.data)
         }
         if (s === 4) {
           const [txRes, reportRes] = await Promise.all([
             transcriptsApi.getBySession(id),
             reportsApi.list({ session_id: id }),
           ])
+          if (ignore) return
           setTranscript(txRes.data)
           const segs = await transcriptsApi.listSegments(txRes.data.id)
+          if (ignore) return
           setSegments(segs.data)
           if (reportRes.data.length > 0) {
             const r = reportRes.data[0]
             setReport(r)
             const rSegs = await reportsApi.listSegments(r.id)
-            setReportSegments(rSegs.data)
+            if (!ignore) setReportSegments(rSegs.data)
           }
         }
       })
-      .catch(() => showToast({ title: '세션 정보를 불러오지 못했습니다', kind: 'error' }))
-      .finally(() => setLoading(false))
+      .catch(() => { if (!ignore) showToast({ title: '세션 정보를 불러오지 못했습니다', kind: 'error' }) })
+      .finally(() => { if (!ignore) setLoading(false) })
+    return () => { ignore = true }
   }, [id])
 
   useEffect(() => {

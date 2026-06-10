@@ -20,16 +20,19 @@ export default function PatientDetailPage() {
 
   useEffect(() => {
     if (!id) return
+    let ignore = false
     Promise.all([
       patientsApi.get(id),
       sessionsApi.list({ patient_ref_id: id }),
     ])
       .then(([patientRes, sessionsRes]) => {
+        if (ignore) return
         setPatient(patientRes.data)
         setSessions(sessionsRes.data)
       })
-      .catch(() => showToast({ title: '데이터를 불러오지 못했습니다', kind: 'error' }))
-      .finally(() => setLoading(false))
+      .catch(() => { if (!ignore) showToast({ title: '데이터를 불러오지 못했습니다', kind: 'error' }) })
+      .finally(() => { if (!ignore) setLoading(false) })
+    return () => { ignore = true }
   }, [id])
 
   if (loading) {

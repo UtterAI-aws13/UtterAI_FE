@@ -30,9 +30,11 @@ export default function NewSessionPage() {
   })
 
   useEffect(() => {
+    let ignore = false
     patientsApi.list()
-      .then(({ data }) => setPatients(data))
-      .catch(() => showToast({ title: '환자 목록을 불러오지 못했습니다', kind: 'error' }))
+      .then(({ data }) => { if (!ignore) setPatients(data) })
+      .catch(() => { if (!ignore) showToast({ title: '환자 목록을 불러오지 못했습니다', kind: 'error' }) })
+    return () => { ignore = true }
   }, [])
 
   const onSubmit = async (values: FormValues) => {
@@ -85,7 +87,7 @@ export default function NewSessionPage() {
               <select {...register('patientRefId')} className={cn(inputClass(!!errors.patientRefId), 'cursor-pointer')}>
                 <option value="">환자를 선택해주세요</option>
                 {patients.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+                  <option key={p.id} value={p.patient_ref_id}>{p.name}</option>
                 ))}
               </select>
               {errors.patientRefId && <p className="mt-1 text-[11px] text-red-700">{errors.patientRefId.message}</p>}
