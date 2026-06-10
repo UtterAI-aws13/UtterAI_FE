@@ -4,23 +4,24 @@ import { apiClient } from './client'
 export interface PresignedUploadResponse {
   audio_file_id: string
   upload_url: string
-  s3_bucket: string
-  s3_key: string
+  object_key: string
   expires_in: number
 }
+
+export type AudioFileStatus = 'PENDING_UPLOAD' | 'UPLOADED' | 'FAILED' | 'EXPIRED' | 'DELETED'
 
 export interface AudioFile {
   id: string
   session_id: string
-  original_file_name: string
+  created_by_slp_id: string
+  object_key: string
+  original_filename: string
   content_type: string | null
-  file_size: number | null
-  s3_bucket: string
-  s3_key: string
-  duration_seconds: number | null
-  status: string
+  actual_size_bytes: number | null
+  presigned_expires_at: string | null
+  uploaded_at: string | null
+  status: AudioFileStatus
   created_at: string
-  updated_at: string
 }
 
 export const audioApi = {
@@ -34,7 +35,7 @@ export const audioApi = {
   uploadToS3: (uploadUrl: string, file: File) =>
     axios.put(uploadUrl, file, { headers: { 'Content-Type': file.type } }),
 
-  complete: (payload: { session_id: string; s3_key: string; duration_seconds?: number }) =>
+  complete: (payload: { session_id: string; object_key: string; actual_size_bytes?: number }) =>
     apiClient.post<AudioFile>('/audio-files', payload),
 
   get:    (id: string) => apiClient.get<AudioFile>(`/audio-files/${id}`),

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sessionsApi, type Session } from '@/api/sessions'
-import { childrenApi, type Child } from '@/api/children'
+import { patientsApi, type Patient } from '@/api/patients'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Icon } from '@/components/common/Icon'
 import { useAuthStore } from '@/store/authStore'
@@ -24,18 +24,18 @@ export default function DashboardPage() {
   const user = useAuthStore((s) => s.user)
 
   const [sessions, setSessions] = useState<Session[]>([])
-  const [children, setChildren] = useState<Child[]>([])
-  const [childMap, setChildMap] = useState<Record<string, Child>>({})
+  const [patients, setPatients] = useState<Patient[]>([])
+  const [patientMap, setPatientMap] = useState<Record<string, Patient>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([sessionsApi.list(), childrenApi.list()])
-      .then(([sessRes, childRes]) => {
+    Promise.all([sessionsApi.list(), patientsApi.list()])
+      .then(([sessRes, patientRes]) => {
         setSessions(sessRes.data)
-        setChildren(childRes.data)
-        const map: Record<string, Child> = {}
-        childRes.data.forEach((c) => { map[c.id] = c })
-        setChildMap(map)
+        setPatients(patientRes.data)
+        const map: Record<string, Patient> = {}
+        patientRes.data.forEach((p) => { map[p.id] = p })
+        setPatientMap(map)
       })
       .catch(() => showToast({ title: '데이터를 불러오지 못했습니다', kind: 'error' }))
       .finally(() => setLoading(false))
@@ -52,9 +52,9 @@ export default function DashboardPage() {
     .slice(0, 5)
 
   const stats = [
-    { id: 'children', label: '담당 아동',    value: children.length,       delta: `전체 ${children.length}명`,       tone: 'pos' as const },
+    { id: 'patients', label: '담당 환자',    value: patients.length,          delta: `전체 ${patients.length}명`,          tone: 'pos' as const },
     { id: 'sessions', label: '이번 달 세션',  value: thisMonthSessions.length, delta: `이번 달 ${thisMonthSessions.length}회`, tone: 'pos' as const },
-    { id: 'queue',    label: '분석 진행 중',  value: processingCount,       delta: '현재 진행 중',                    tone: 'neutral' as const },
+    { id: 'queue',    label: '분석 진행 중',  value: processingCount,          delta: '현재 진행 중',                         tone: 'neutral' as const },
   ]
 
   return (
@@ -103,7 +103,7 @@ export default function DashboardPage() {
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="bg-ink-50 border-b border-ink-100">
-                  <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider">아동</th>
+                  <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider">환자</th>
                   <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider">날짜</th>
                   <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider">유형</th>
                   <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider">상태</th>
@@ -111,7 +111,7 @@ export default function DashboardPage() {
               </thead>
               <tbody>
                 {recentSessions.map((s) => {
-                  const child = childMap[s.child_id]
+                  const patient = patientMap[s.patient_ref_id]
                   return (
                     <tr
                       key={s.id}
@@ -121,9 +121,9 @@ export default function DashboardPage() {
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[13px] font-bold">
-                            {child ? child.name[0] : '?'}
+                            {patient ? patient.name[0] : '?'}
                           </div>
-                          <p className="font-semibold text-ink-800">{child?.name ?? '—'}</p>
+                          <p className="font-semibold text-ink-800">{patient?.name ?? '—'}</p>
                         </div>
                       </td>
                       <td className="px-5 py-3 font-mono-num text-ink-500">{formatDate(s.session_date)}</td>

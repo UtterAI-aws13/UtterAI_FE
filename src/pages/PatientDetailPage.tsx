@@ -1,19 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { childrenApi, type Child } from '@/api/children'
+import { patientsApi, type Patient } from '@/api/patients'
 import { sessionsApi, type Session } from '@/api/sessions'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Icon } from '@/components/common/Icon'
-import { ChildFormModal } from '@/components/common/ChildFormModal'
+import { PatientFormModal } from '@/components/common/PatientFormModal'
 import { cn, computeAge, formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 
-export default function ChildDetailPage() {
+export default function PatientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { showToast } = useToast()
 
-  const [child, setChild] = useState<Child | null>(null)
+  const [patient, setPatient] = useState<Patient | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [showEdit, setShowEdit] = useState(false)
@@ -21,11 +21,11 @@ export default function ChildDetailPage() {
   useEffect(() => {
     if (!id) return
     Promise.all([
-      childrenApi.get(id),
+      patientsApi.get(id),
       sessionsApi.list({ patient_ref_id: id }),
     ])
-      .then(([childRes, sessionsRes]) => {
-        setChild(childRes.data)
+      .then(([patientRes, sessionsRes]) => {
+        setPatient(patientRes.data)
         setSessions(sessionsRes.data)
       })
       .catch(() => showToast({ title: '데이터를 불러오지 못했습니다', kind: 'error' }))
@@ -36,25 +36,25 @@ export default function ChildDetailPage() {
     return <div className="px-8 pt-7 text-[13px] text-ink-400">불러오는 중…</div>
   }
 
-  if (!child) {
-    return <div className="px-8 pt-7 text-[13px] text-ink-500">아동 정보를 찾을 수 없습니다.</div>
+  if (!patient) {
+    return <div className="px-8 pt-7 text-[13px] text-ink-500">환자 정보를 찾을 수 없습니다.</div>
   }
 
-  const genderLabel = child.gender === 'F' ? '여아' : child.gender === 'M' ? '남아' : '미입력'
+  const genderLabel = patient.gender === 'F' ? '여성' : patient.gender === 'M' ? '남성' : '미입력'
 
   return (
     <div>
       <div className="px-8 pt-7 pb-5 flex items-center gap-4">
         <button
-          onClick={() => navigate('/children')}
+          onClick={() => navigate('/patients')}
           className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-500 hover:bg-ink-100 transition-colors"
         >
           <Icon name="arrowLeft" size={16} />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-ink-800 tracking-tight">{child.name}</h1>
+          <h1 className="text-2xl font-bold text-ink-800 tracking-tight">{patient.name}</h1>
           <p className="text-[13px] text-ink-500 mt-0.5">
-            {computeAge(child.birth_date)} · {genderLabel} · 등록일 {formatDate(child.created_at)}
+            {computeAge(patient.birth_date)} · {genderLabel} · 등록일 {formatDate(patient.created_at)}
           </p>
         </div>
       </div>
@@ -66,13 +66,13 @@ export default function ChildDetailPage() {
             <div className="flex items-center gap-3 mb-4 pb-4 border-b border-ink-100">
               <div className={cn(
                 'w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold',
-                child.gender === 'F' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700',
+                patient.gender === 'F' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700',
               )}>
-                {child.name[0]}
+                {patient.name[0]}
               </div>
               <div className="flex-1">
-                <p className="font-bold text-[16px] text-ink-800">{child.name}</p>
-                <p className="text-[12px] text-ink-500">{formatDate(child.birth_date)}</p>
+                <p className="font-bold text-[16px] text-ink-800">{patient.name}</p>
+                <p className="text-[12px] text-ink-500">{formatDate(patient.birth_date)}</p>
               </div>
               <button
                 onClick={() => setShowEdit(true)}
@@ -96,10 +96,10 @@ export default function ChildDetailPage() {
             </div>
           </div>
 
-          {child.memo && (
+          {patient.memo && (
             <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-5">
               <p className="text-[13px] font-semibold text-ink-800 mb-2">메모</p>
-              <p className="text-[12px] text-ink-500 leading-relaxed">{child.memo}</p>
+              <p className="text-[12px] text-ink-500 leading-relaxed">{patient.memo}</p>
             </div>
           )}
         </div>
@@ -151,11 +151,11 @@ export default function ChildDetailPage() {
         </div>
       </div>
 
-      {showEdit && child && (
-        <ChildFormModal
-          child={child}
+      {showEdit && patient && (
+        <PatientFormModal
+          patient={patient}
           onClose={() => setShowEdit(false)}
-          onDone={(updated) => setChild(updated)}
+          onDone={(updated) => setPatient(updated)}
         />
       )}
     </div>

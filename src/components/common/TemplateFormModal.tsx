@@ -1,17 +1,20 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { templatesApi, type Template } from '@/api/templates'
+import { templatesApi, type Template, type TemplateType } from '@/api/templates'
 import { Icon } from '@/components/common/Icon'
 import { useToast } from '@/hooks/useToast'
 import { cn } from '@/lib/utils'
 
-const CATEGORIES = ['세션', '평가', '리포트']
+const TEMPLATE_TYPES: Array<{ value: TemplateType; label: string }> = [
+  { value: 'SOAP_NOTE', label: 'SOAP Note' },
+  { value: 'CUSTOM',    label: '커스텀' },
+]
 
 const schema = z.object({
-  name:     z.string().min(1, '템플릿 이름을 입력해주세요.'),
-  category: z.string().min(1, '카테고리를 선택해주세요.'),
-  content:  z.string().optional(),
+  name:          z.string().min(1, '템플릿 이름을 입력해주세요.'),
+  template_type: z.enum(['SOAP_NOTE', 'CUSTOM']),
+  description:   z.string().optional(),
 })
 type FormValues = z.infer<typeof schema>
 
@@ -28,17 +31,17 @@ export function TemplateFormModal({ template, onClose, onSaved }: Props) {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver:      zodResolver(schema),
     defaultValues: {
-      name:     template?.name ?? '',
-      category: template?.category ?? '세션',
-      content:  template?.content ?? '',
+      name:          template?.name          ?? '',
+      template_type: template?.template_type ?? 'SOAP_NOTE',
+      description:   template?.description   ?? '',
     },
   })
 
   const onSubmit = async (values: FormValues) => {
     try {
       const { data } = isEdit
-        ? await templatesApi.update(template.id, values)
-        : await templatesApi.create({ name: values.name, category: values.category, content: values.content ?? '' })
+        ? await templatesApi.update(template.id, { name: values.name, description: values.description || undefined })
+        : await templatesApi.create({ name: values.name, template_type: values.template_type, description: values.description || undefined })
 
       showToast({
         title: isEdit ? '템플릿이 수정되었습니다' : '템플릿이 생성되었습니다',
@@ -85,27 +88,26 @@ export function TemplateFormModal({ template, onClose, onSaved }: Props) {
             {errors.name && <p className="mt-1 text-[11px] text-red-700">{errors.name.message}</p>}
           </div>
 
-          <div>
-            <label className="block text-[12px] font-medium text-ink-800 mb-2">
-              카테고리 <span className="text-red-500">*</span>
-            </label>
-            <div className="flex gap-3">
-              {CATEGORIES.map((c) => (
-                <label key={c} className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" {...register('category')} value={c} className="accent-brand-700" />
-                  <span className="text-[13px] text-ink-800">{c}</span>
-                </label>
-              ))}
+          {!isEdit && (
+            <div>
+              <label className="block text-[12px] font-medium text-ink-800 mb-2">유형</label>
+              <div className="flex gap-3">
+                {TEMPLATE_TYPES.map(({ value, label }) => (
+                  <label key={value} className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" {...register('template_type')} value={value} className="accent-brand-700" />
+                    <span className="text-[13px] text-ink-800">{label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
-            {errors.category && <p className="mt-1 text-[11px] text-red-700">{errors.category.message}</p>}
-          </div>
+          )}
 
           <div>
-            <label className="block text-[12px] font-medium text-ink-800 mb-1.5">내용 (선택)</label>
+            <label className="block text-[12px] font-medium text-ink-800 mb-1.5">설명 (선택)</label>
             <textarea
-              {...register('content')}
-              rows={5}
-              placeholder="템플릿 내용을 입력하세요"
+              {...register('description')}
+              rows={3}
+              placeholder="템플릿에 대한 설명을 입력하세요"
               className={cn(inputCls(), 'h-auto py-2 resize-none')}
             />
           </div>

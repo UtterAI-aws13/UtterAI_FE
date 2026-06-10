@@ -3,24 +3,25 @@ import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { childrenApi, type Child } from '@/api/children'
+import { patientsApi, type Patient } from '@/api/patients'
 import { sessionsApi } from '@/api/sessions'
 import { Icon } from '@/components/common/Icon'
 import { useToast } from '@/hooks/useToast'
 import { cn } from '@/lib/utils'
 
 const schema = z.object({
-  childId:     z.string().min(1, '아동을 선택해주세요.'),
-  date:        z.string().min(1, '날짜를 입력해주세요.'),
-  sessionType: z.string().min(1, '세션 유형을 선택해주세요.'),
-  memo:        z.string().optional(),
+  patientRefId: z.string().min(1, '환자를 선택해주세요.'),
+  date:         z.string().min(1, '날짜를 입력해주세요.'),
+  sessionType:  z.string().min(1, '세션 유형을 선택해주세요.'),
+  sessionGoal:  z.string().optional(),
+  memo:         z.string().optional(),
 })
 type FormValues = z.infer<typeof schema>
 
 export default function NewSessionPage() {
   const navigate = useNavigate()
   const { showToast } = useToast()
-  const [children, setChildren] = useState<Child[]>([])
+  const [patients, setPatients] = useState<Patient[]>([])
   const [submitting, setSubmitting] = useState(false)
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
@@ -29,19 +30,20 @@ export default function NewSessionPage() {
   })
 
   useEffect(() => {
-    childrenApi.list()
-      .then(({ data }) => setChildren(data))
-      .catch(() => showToast({ title: '아동 목록을 불러오지 못했습니다', kind: 'error' }))
+    patientsApi.list()
+      .then(({ data }) => setPatients(data))
+      .catch(() => showToast({ title: '환자 목록을 불러오지 못했습니다', kind: 'error' }))
   }, [])
 
   const onSubmit = async (values: FormValues) => {
     setSubmitting(true)
     try {
       const { data: session } = await sessionsApi.create({
-        child_id:     values.childId,
-        session_date: values.date,
-        session_type: values.sessionType,
-        memo:         values.memo || undefined,
+        patient_ref_id: values.patientRefId,
+        session_date:   values.date,
+        session_type:   values.sessionType,
+        session_goal:   values.sessionGoal || undefined,
+        memo:           values.memo || undefined,
       })
       showToast({ title: '세션이 생성되었습니다', body: '이제 음성 파일을 업로드해주세요.', kind: 'success' })
       navigate(`/sessions/${session.id}`)
@@ -77,16 +79,16 @@ export default function NewSessionPage() {
       <div className="px-8 pb-8 max-w-[520px]">
         <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-6">
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
-            {/* Child select */}
+            {/* Patient select */}
             <div>
-              <label className="block text-[12px] font-medium text-ink-800 mb-1.5">아동 선택</label>
-              <select {...register('childId')} className={cn(inputClass(!!errors.childId), 'cursor-pointer')}>
-                <option value="">아동을 선택해주세요</option>
-                {children.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+              <label className="block text-[12px] font-medium text-ink-800 mb-1.5">환자 선택</label>
+              <select {...register('patientRefId')} className={cn(inputClass(!!errors.patientRefId), 'cursor-pointer')}>
+                <option value="">환자를 선택해주세요</option>
+                {patients.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
-              {errors.childId && <p className="mt-1 text-[11px] text-red-700">{errors.childId.message}</p>}
+              {errors.patientRefId && <p className="mt-1 text-[11px] text-red-700">{errors.patientRefId.message}</p>}
             </div>
 
             {/* Date */}
@@ -107,6 +109,16 @@ export default function NewSessionPage() {
                   </label>
                 ))}
               </div>
+            </div>
+
+            {/* Session goal */}
+            <div>
+              <label className="block text-[12px] font-medium text-ink-800 mb-1.5">세션 목표 (선택)</label>
+              <input
+                {...register('sessionGoal')}
+                placeholder="이번 세션의 목표를 입력하세요"
+                className={inputClass()}
+              />
             </div>
 
             {/* Memo */}

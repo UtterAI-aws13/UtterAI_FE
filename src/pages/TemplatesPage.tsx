@@ -1,17 +1,26 @@
 import { useState, useEffect } from 'react'
-import { templatesApi, type Template } from '@/api/templates'
+import { templatesApi, type Template, type TemplateType } from '@/api/templates'
 import { Icon } from '@/components/common/Icon'
 import { TemplateFormModal } from '@/components/common/TemplateFormModal'
 import { useToast } from '@/hooks/useToast'
 import { cn } from '@/lib/utils'
 
-const CATEGORIES = ['전체', '세션', '평가', '리포트']
+const TYPE_LABEL: Record<TemplateType, string> = {
+  SOAP_NOTE: 'SOAP Note',
+  CUSTOM:    '커스텀',
+}
+
+const TYPE_FILTERS: Array<{ label: string; value: TemplateType | 'all' }> = [
+  { label: '전체',      value: 'all' },
+  { label: 'SOAP Note', value: 'SOAP_NOTE' },
+  { label: '커스텀',    value: 'CUSTOM' },
+]
 
 export default function TemplatesPage() {
   const { showToast } = useToast()
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
-  const [category, setCategory] = useState('전체')
+  const [typeFilter, setTypeFilter] = useState<TemplateType | 'all'>('all')
   const [modal, setModal] = useState<null | 'create' | Template>(null)
 
   useEffect(() => {
@@ -22,7 +31,7 @@ export default function TemplatesPage() {
   }, [])
 
   const filtered = templates.filter(
-    (t) => category === '전체' || t.category === category,
+    (t) => typeFilter === 'all' || t.template_type === typeFilter,
   )
 
   return (
@@ -42,18 +51,18 @@ export default function TemplatesPage() {
 
       <div className="px-8 pb-8">
         <div className="flex gap-2 mb-4">
-          {CATEGORIES.map((c) => (
+          {TYPE_FILTERS.map((f) => (
             <button
-              key={c}
-              onClick={() => setCategory(c)}
+              key={f.value}
+              onClick={() => setTypeFilter(f.value)}
               className={cn(
                 'px-3 py-1.5 rounded-full text-[12px] font-medium border transition-all',
-                category === c
+                typeFilter === f.value
                   ? 'bg-brand-700 text-white border-brand-700'
                   : 'bg-white text-ink-600 border-ink-200 hover:bg-ink-50',
               )}
             >
-              {c}
+              {f.label}
             </button>
           ))}
         </div>
@@ -62,7 +71,7 @@ export default function TemplatesPage() {
           <div className="text-center py-12 text-[13px] text-ink-400">불러오는 중…</div>
         ) : filtered.length === 0 ? (
           <div className="py-12 text-center text-[13px] text-ink-400">
-            {category === '전체' ? '템플릿이 없습니다.' : `'${category}' 카테고리에 템플릿이 없습니다.`}
+            {typeFilter === 'all' ? '템플릿이 없습니다.' : `'${TYPE_LABEL[typeFilter as TemplateType]}' 유형에 템플릿이 없습니다.`}
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
@@ -76,10 +85,13 @@ export default function TemplatesPage() {
                     <Icon name="fileText" size={20} strokeWidth={1.8} />
                   </div>
                   <span className="text-[11px] font-semibold bg-ink-100 text-ink-600 px-2 py-0.5 rounded-md">
-                    {t.category}
+                    {TYPE_LABEL[t.template_type]}
                   </span>
                 </div>
                 <h3 className="text-[14px] font-semibold text-ink-800 leading-snug">{t.name}</h3>
+                {t.description && (
+                  <p className="text-[12px] text-ink-500 mt-1 line-clamp-2">{t.description}</p>
+                )}
                 <div className="flex items-center justify-between mt-3">
                   <p className="text-[11px] text-ink-400">{t.is_system ? '시스템 템플릿' : '내 템플릿'}</p>
                   <p className="text-[11px] text-ink-500">

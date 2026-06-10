@@ -12,7 +12,7 @@ const schema = z.object({
   email:    z.string().email('올바른 이메일 형식을 입력해주세요.'),
   password: z.string().min(8, '비밀번호는 8자 이상이어야 합니다.'),
   confirm:  z.string().min(1, '비밀번호를 한 번 더 입력해주세요.'),
-  role:     z.enum(['THERAPIST', 'ADMIN']),
+  role:     z.enum(['SLP', 'ADMIN']),
 }).refine((d) => d.password === d.confirm, {
   message: '비밀번호가 일치하지 않습니다.',
   path: ['confirm'],
@@ -20,7 +20,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 const ROLES = [
-  { value: 'THERAPIST' as const, name: '치료사',  desc: '세션 녹음·분석·리포트 작성', icon: 'user'   as const },
+  { value: 'SLP' as const, name: '치료사 (SLP)',  desc: '세션 녹음·분석·리포트 작성', icon: 'user'   as const },
   { value: 'ADMIN'     as const, name: '관리자',  desc: '기관·사용자 관리',           icon: 'shield' as const },
 ]
 
@@ -39,7 +39,7 @@ export default function SignupPage() {
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { role: 'THERAPIST' },
+    defaultValues: { role: 'SLP' },
   })
 
   const password = watch('password') ?? ''

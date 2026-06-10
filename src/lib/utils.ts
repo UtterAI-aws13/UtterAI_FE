@@ -30,3 +30,11 @@ export function formatSeconds(seconds: number | null | undefined): string {
   const s = (seconds % 60).toFixed(1)
   return `${String(m).padStart(2, '0')}:${s.padStart(4, '0')}`
 }
+
+export function formatMs(ms: number | null | undefined): string {
+  if (ms == null) return ''
+  const totalSec = Math.floor(ms / 1000)
+  const m = Math.floor(totalSec / 60)
+  const s = String(totalSec % 60).padStart(2, '0')
+  return `${m}:${s}`
+}
