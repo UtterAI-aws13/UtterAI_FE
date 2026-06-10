@@ -277,6 +277,18 @@ export default function SessionDetailPage() {
     }
   }
 
+  // ── Back navigation ───────────────────────────────────────────
+  const handleBack = async () => {
+    if (session?.status === 'CREATED' && id) {
+      try {
+        await sessionsApi.delete(id)
+      } catch {
+        // ignore — navigate back regardless
+      }
+    }
+    navigate(-1)
+  }
+
   // ── Session delete ────────────────────────────────────────────
   const handleDeleteSession = async () => {
     if (!id) return
@@ -302,7 +314,7 @@ export default function SessionDetailPage() {
       {/* Header */}
       <div className="px-8 pt-7 pb-5 flex items-center gap-4">
         <button
-          onClick={() => navigate(-1)}
+          onClick={handleBack}
           className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-500 hover:bg-ink-100 transition-colors"
         >
           <Icon name="arrowLeft" size={16} />
