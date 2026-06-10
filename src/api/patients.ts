@@ -2,10 +2,12 @@ import { apiClient } from './client'
 
 export interface Patient {
   id: string
+  patient_ref_id: string
   name: string
   birth_date: string | null
   gender: string | null
   memo: string | null
+  status: string
   created_by_slp_id: string
   current_slp_id: string
   created_at: string

@@ -87,7 +87,7 @@ export default function NewSessionPage() {
               <select {...register('patientRefId')} className={cn(inputClass(!!errors.patientRefId), 'cursor-pointer')}>
                 <option value="">환자를 선택해주세요</option>
                 {patients.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+                  <option key={p.id} value={p.patient_ref_id}>{p.name}</option>
                 ))}
               </select>
               {errors.patientRefId && <p className="mt-1 text-[11px] text-red-700">{errors.patientRefId.message}</p>}
