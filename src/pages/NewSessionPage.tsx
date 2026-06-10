@@ -30,9 +30,11 @@ export default function NewSessionPage() {
   })
 
   useEffect(() => {
+    let ignore = false
     patientsApi.list()
-      .then(({ data }) => setPatients(data))
-      .catch(() => showToast({ title: '환자 목록을 불러오지 못했습니다', kind: 'error' }))
+      .then(({ data }) => { if (!ignore) setPatients(data) })
+      .catch(() => { if (!ignore) showToast({ title: '환자 목록을 불러오지 못했습니다', kind: 'error' }) })
+    return () => { ignore = true }
   }, [])
 
   const onSubmit = async (values: FormValues) => {

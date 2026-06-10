@@ -32,10 +32,12 @@ export default function PatientsPage() {
   const [showModal, setShowModal] = useState(false)
 
   useEffect(() => {
+    let ignore = false
     patientsApi.list()
-      .then(({ data }) => setPatients(data))
-      .catch(() => showToast({ title: '환자 목록을 불러오지 못했습니다', kind: 'error' }))
-      .finally(() => setLoading(false))
+      .then(({ data }) => { if (!ignore) setPatients(data) })
+      .catch(() => { if (!ignore) showToast({ title: '환자 목록을 불러오지 못했습니다', kind: 'error' }) })
+      .finally(() => { if (!ignore) setLoading(false) })
+    return () => { ignore = true }
   }, [])
 
   const filtered = patients.filter((p) => {

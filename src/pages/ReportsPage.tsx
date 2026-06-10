@@ -20,10 +20,12 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let ignore = false
     reportsApi.list()
-      .then(({ data }) => setReports(data))
-      .catch(() => showToast({ title: '리포트 목록을 불러오지 못했습니다', kind: 'error' }))
-      .finally(() => setLoading(false))
+      .then(({ data }) => { if (!ignore) setReports(data) })
+      .catch(() => { if (!ignore) showToast({ title: '리포트 목록을 불러오지 못했습니다', kind: 'error' }) })
+      .finally(() => { if (!ignore) setLoading(false) })
+    return () => { ignore = true }
   }, [])
 
   const handleDownload = async (report: Report) => {

@@ -24,10 +24,12 @@ export default function TemplatesPage() {
   const [modal, setModal] = useState<null | 'create' | Template>(null)
 
   useEffect(() => {
+    let ignore = false
     templatesApi.list()
-      .then(({ data }) => setTemplates(data))
-      .catch(() => showToast({ title: '템플릿 목록을 불러오지 못했습니다', kind: 'error' }))
-      .finally(() => setLoading(false))
+      .then(({ data }) => { if (!ignore) setTemplates(data) })
+      .catch(() => { if (!ignore) showToast({ title: '템플릿 목록을 불러오지 못했습니다', kind: 'error' }) })
+      .finally(() => { if (!ignore) setLoading(false) })
+    return () => { ignore = true }
   }, [])
 
   const filtered = templates.filter(
