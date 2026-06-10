@@ -28,6 +28,7 @@ export interface AnalysisJob {
 
 export interface AnalysisResult {
   id: string
+  result_id?: string  // 일부 엔드포인트는 id 대신 result_id로 반환
   job_id: string
   session_id: string
   summary_json: Record<string, unknown> | null
