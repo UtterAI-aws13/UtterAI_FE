@@ -22,8 +22,9 @@ export interface CreatePatientPayload {
 }
 
 export const patientsApi = {
-  list:   ()                                              => apiClient.get<Patient[]>('/patients'),
-  get:    (id: string)                                    => apiClient.get<Patient>(`/patients/${id}`),
+  list:      ()          => apiClient.get<Patient[]>('/patients'),
+  get:       (id: string) => apiClient.get<Patient>(`/patients/${id}`),
+  getByRef:  (refId: string) => apiClient.get<Patient>(`/patients/by-ref/${refId}`),
   create: (payload: CreatePatientPayload)                 => apiClient.post<Patient>('/patients', payload),
   update: (id: string, payload: Partial<Omit<CreatePatientPayload, 'slp_id'>>) =>
     apiClient.patch<Patient>(`/patients/${id}`, payload),

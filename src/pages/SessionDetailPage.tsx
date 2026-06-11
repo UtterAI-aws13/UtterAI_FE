@@ -95,7 +95,7 @@ export default function SessionDetailPage() {
         setSession(sess)
         const s = statusToStep(sess.status)
         setStep(s)
-        await patientsApi.get(sess.patient_ref_id).then(({ data }) => { if (!ignore) setPatient(data) }).catch(() => {})
+        await patientsApi.getByRef(sess.patient_ref_id).then(({ data }) => { if (!ignore) setPatient(data) }).catch(() => {})
         if (ignore) return
         if (s === 2) {
           const jobRes = await analysisApi.list({ session_id: id })
@@ -177,7 +177,8 @@ export default function SessionDetailPage() {
       setAnalysisJob(job)
       showToast({ title: '음성 파일이 업로드되었습니다', body: 'AI 분석을 시작합니다.', kind: 'success' })
       await fetchSession()
-    } catch {
+    } catch (err) {
+      console.error('[upload]', err)
       showToast({ title: '업로드에 실패했습니다', body: '파일 형식 및 네트워크를 확인해주세요.', kind: 'error' })
     } finally {
       setUploading(false)
@@ -190,13 +191,28 @@ export default function SessionDetailPage() {
     if (!analysisJob) return
     setCancelling(true)
     try {
-      await analysisApi.cancel(analysisJob.id)
+      const { data } = await analysisApi.cancel(analysisJob.id)
+      setAnalysisJob(data.job)
       showToast({ title: '분석이 취소되었습니다', kind: 'info' })
       await fetchSession()
-    } catch {
+    } catch (err) {
+      console.error('[cancel]', err)
       showToast({ title: '취소에 실패했습니다', kind: 'error' })
     } finally {
       setCancelling(false)
+    }
+  }
+
+  // ── Re-request analysis after cancel ─────────────────────────
+  const handleRequestAnalysis = async () => {
+    if (!id || !analysisJob) return
+    try {
+      const { data: job } = await analysisApi.create({ session_id: id, audio_file_id: analysisJob.audio_file_id })
+      setAnalysisJob(job)
+      await fetchSession()
+    } catch (err) {
+      console.error('[request-analysis]', err)
+      showToast({ title: '분석 요청에 실패했습니다', kind: 'error' })
     }
   }
 
@@ -277,6 +293,18 @@ export default function SessionDetailPage() {
     }
   }
 
+  // ── Back navigation ───────────────────────────────────────────
+  const handleBack = async () => {
+    if (session?.status === 'CREATED' && id) {
+      try {
+        await sessionsApi.delete(id)
+      } catch {
+        // ignore — navigate back regardless
+      }
+    }
+    navigate(-1)
+  }
+
   // ── Session delete ────────────────────────────────────────────
   const handleDeleteSession = async () => {
     if (!id) return
@@ -302,7 +330,7 @@ export default function SessionDetailPage() {
       {/* Header */}
       <div className="px-8 pt-7 pb-5 flex items-center gap-4">
         <button
-          onClick={() => navigate(-1)}
+          onClick={handleBack}
           className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-500 hover:bg-ink-100 transition-colors"
         >
           <Icon name="arrowLeft" size={16} />
@@ -389,7 +417,11 @@ export default function SessionDetailPage() {
                 type="file"
                 accept="audio/*,.wav,.mp3,.m4a"
                 className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f) }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  e.target.value = ''
+                  if (f) handleFileUpload(f)
+                }}
               />
               <div
                 className={cn(
@@ -439,6 +471,22 @@ export default function SessionDetailPage() {
                   <p className="font-semibold text-ink-800">분석 중 오류가 발생했습니다</p>
                   <p className="text-[12px] text-ink-500 mt-1">{analysisJob?.error_message ?? '알 수 없는 오류'}</p>
                 </>
+              ) : session.status === 'AUDIO_UPLOADED' ? (
+                <>
+                  <div className="w-16 h-16 rounded-full bg-ink-50 flex items-center justify-center text-ink-400 mx-auto mb-4">
+                    <Icon name="x" size={28} strokeWidth={1.8} />
+                  </div>
+                  <p className="font-semibold text-ink-800">분석이 취소되었습니다</p>
+                  <p className="text-[12px] text-ink-500 mt-1">분석을 다시 요청할 수 있습니다.</p>
+                  {analysisJob && (
+                    <button
+                      onClick={handleRequestAnalysis}
+                      className="mt-4 px-4 py-1.5 bg-brand-600 text-white rounded-full text-[12px] font-semibold hover:bg-brand-700 transition-colors"
+                    >
+                      다시 분석 요청
+                    </button>
+                  )}
+                </>
               ) : (
                 <>
                   <div className="w-16 h-16 rounded-full border-4 border-brand-200 border-t-brand-700 mx-auto mb-4"
@@ -448,7 +496,7 @@ export default function SessionDetailPage() {
                     {analysisJob?.pipeline_stage ? `현재 단계: ${analysisJob.pipeline_stage}` : '평균 2–3분 소요됩니다'}
                   </p>
                   <p className="text-[11px] text-ink-400 mt-4">페이지를 벗어나도 분석은 계속됩니다.</p>
-                  {analysisJob && (
+                  {analysisJob && ['PENDING', 'DOWNLOADING', 'RETRYING'].includes(analysisJob.status) && (
                     <button
                       onClick={handleCancelAnalysis}
                       disabled={cancelling}
