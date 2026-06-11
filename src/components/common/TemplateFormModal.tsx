@@ -7,7 +7,15 @@ import { Icon } from '@/components/common/Icon'
 import { useToast } from '@/hooks/useToast'
 import { cn } from '@/lib/utils'
 
-const ACCEPTED_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.hwp']
+const ACCEPTED_EXTENSIONS = [
+  '.pdf',
+  '.doc', '.docx',
+  '.xls', '.xlsx',
+  '.ppt', '.pptx',
+  '.hwp', '.hwpx',
+  '.txt', '.rtf', '.csv',
+  '.odt', '.ods', '.odp',
+]
 const ACCEPTED_MIME = ACCEPTED_EXTENSIONS.join(',')
 
 const TEMPLATE_TYPES: Array<{ value: TemplateType; label: string }> = [
@@ -201,7 +209,7 @@ export function TemplateFormModal({ template, onClose, onSaved }: Props) {
             <div>
               <label className="block text-[12px] font-medium text-ink-800 mb-1.5">
                 파일 <span className="text-red-500">*</span>
-                <span className="ml-1.5 text-ink-400 font-normal">pdf, docx, xlsx, hwp</span>
+                <span className="ml-1.5 text-ink-400 font-normal">pdf, docx, xlsx, hwp, hwpx 등 문서 파일</span>
               </label>
               {file ? (
                 <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-brand-300 bg-brand-50">
