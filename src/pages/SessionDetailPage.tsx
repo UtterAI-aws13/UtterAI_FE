@@ -57,7 +57,9 @@ export default function SessionDetailPage() {
 
   const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null)
   const pollRef                       = useRef<ReturnType<typeof setInterval> | null>(null)
+  const reportPollRef                 = useRef<ReturnType<typeof setInterval> | null>(null)
   const [cancelling, setCancelling]   = useState(false)
+  const [awaitingReport, setAwaitingReport] = useState(false)
 
   const [transcript, setTranscript]     = useState<Transcript | null>(null)
   const [segments, setSegments]         = useState<TranscriptSegment[]>([])
@@ -66,6 +68,8 @@ export default function SessionDetailPage() {
   const [editText, setEditText]         = useState('')
   const [editRole, setEditRole]         = useState<SpeakerRole>('UNKNOWN')
   const [savingSeg, setSavingSeg]       = useState(false)
+  const [speakerRoleMap, setSpeakerRoleMap] = useState<Record<string, SpeakerRole>>({})
+  const [applyingBulk, setApplyingBulk]    = useState(false)
 
   const [report, setReport]               = useState<Report | null>(null)
   const [reportSegments, setReportSegments] = useState<ReportSegment[]>([])
@@ -159,6 +163,10 @@ export default function SessionDetailPage() {
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [step, id])
 
+  useEffect(() => {
+    return () => { if (reportPollRef.current) clearInterval(reportPollRef.current) }
+  }, [])
+
   // ── Upload ────────────────────────────────────────────────────
   const handleFileUpload = async (file: File) => {
     if (!id) return
@@ -216,6 +224,46 @@ export default function SessionDetailPage() {
     }
   }
 
+  // ── Bulk speaker role assignment ─────────────────────────────
+  useEffect(() => {
+    if (segments.length === 0) return
+    setSpeakerRoleMap((prev) => {
+      const next = { ...prev }
+      segments.forEach((seg) => {
+        const label = seg.speaker_label ?? 'UNKNOWN'
+        if (!(label in next)) next[label] = seg.speaker_role
+      })
+      return next
+    })
+  }, [segments])
+
+  const handleBulkApply = async () => {
+    if (!transcript) return
+    setApplyingBulk(true)
+    try {
+      const payload = segments
+        .filter((seg) => {
+          const label = seg.speaker_label ?? 'UNKNOWN'
+          return speakerRoleMap[label] && speakerRoleMap[label] !== seg.speaker_role
+        })
+        .map((seg) => ({
+          segment_id: seg.id,
+          speaker_role: speakerRoleMap[seg.speaker_label ?? 'UNKNOWN'],
+        }))
+      if (payload.length === 0) return
+      const { data } = await transcriptsApi.bulkUpdateSegments(transcript.id, payload)
+      setSegments((prev) => {
+        const updated = new Map(data.map((s) => [s.id, s]))
+        return prev.map((s) => updated.get(s.id) ?? s)
+      })
+      showToast({ title: '화자 역할이 일괄 적용되었습니다', kind: 'success' })
+    } catch {
+      showToast({ title: '일괄 적용에 실패했습니다', kind: 'error' })
+    } finally {
+      setApplyingBulk(false)
+    }
+  }
+
   // ── Transcript segment editing ────────────────────────────────
   const startEditSeg = (seg: TranscriptSegment) => {
     setEditingSegId(seg.id)
@@ -247,11 +295,37 @@ export default function SessionDetailPage() {
     setConfirming(true)
     try {
       await transcriptsApi.finalize(transcript.id)
-      showToast({ title: '전사가 확정되었습니다', kind: 'success' })
-      const sessData = await fetchSession()
-      if (sessData) setStep(statusToStep(sessData.status))
+      showToast({ title: '전사가 확정되었습니다. 리포트를 생성하고 있습니다.', kind: 'success' })
+      setAwaitingReport(true)
+      reportPollRef.current = setInterval(async () => {
+        const { data: sess } = await sessionsApi.get(id)
+        setSession(sess)
+        if (sess.status === 'REPORT_READY') {
+          setAwaitingReport(false)
+          if (reportPollRef.current) clearInterval(reportPollRef.current)
+          const [txRes, reportRes] = await Promise.all([
+            transcriptsApi.getBySession(id),
+            reportsApi.list({ session_id: id }),
+          ])
+          setTranscript(txRes.data)
+          const segs = await transcriptsApi.listSegments(txRes.data.id)
+          setSegments(segs.data)
+          if (reportRes.data.length > 0) {
+            const r = reportRes.data[0]
+            setReport(r)
+            const rSegs = await reportsApi.listSegments(r.id)
+            setReportSegments(rSegs.data)
+          }
+          setStep(4)
+        } else if (sess.status === 'FAILED') {
+          setAwaitingReport(false)
+          if (reportPollRef.current) clearInterval(reportPollRef.current)
+          showToast({ title: '리포트 생성에 실패했습니다', kind: 'error' })
+        }
+      }, 10_000)
     } catch {
       showToast({ title: '전사 확정에 실패했습니다', kind: 'error' })
+      setAwaitingReport(false)
     } finally {
       setConfirming(false)
     }
@@ -514,6 +588,13 @@ export default function SessionDetailPage() {
         {/* Step 3 — Transcript review */}
         {step === 3 && transcript && (
           <div className="bg-white rounded-xl border border-ink-200 shadow-sm">
+            {awaitingReport ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-4">
+                <div className="w-8 h-8 rounded-full border-2 border-brand-200 border-t-brand-600 animate-spin" />
+                <p className="text-[14px] font-semibold text-ink-700">리포트를 생성하고 있습니다</p>
+                <p className="text-[12px] text-ink-400">페이지를 벗어나도 계속됩니다.</p>
+              </div>
+            ) : (<>
             <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100">
               <div>
                 <p className="text-[16px] font-semibold text-ink-800">전사 검토</p>
@@ -528,6 +609,34 @@ export default function SessionDetailPage() {
                 {confirming ? '처리 중…' : '전사 확정'}
               </button>
             </div>
+            {Object.keys(speakerRoleMap).length > 0 && (
+              <div className="px-6 py-3 border-b border-ink-100 bg-ink-25 flex flex-wrap items-center gap-3">
+                <span className="text-[12px] font-semibold text-ink-600 flex-shrink-0">화자 일괄 지정</span>
+                {Object.entries(speakerRoleMap).map(([label, role]) => (
+                  <div key={label} className="flex items-center gap-1.5">
+                    <span className="text-[12px] font-mono text-ink-500">{label}</span>
+                    <span className="text-[11px] text-ink-300">→</span>
+                    <select
+                      value={role}
+                      onChange={(e) => setSpeakerRoleMap((prev) => ({ ...prev, [label]: e.target.value as SpeakerRole }))}
+                      className="text-[11px] border border-ink-200 rounded-md px-1.5 py-0.5 bg-white outline-none focus:border-brand-500"
+                    >
+                      <option value="PATIENT">환자</option>
+                      <option value="SLP">치료사</option>
+                      <option value="GUARDIAN">보호자</option>
+                      <option value="UNKNOWN">미상</option>
+                    </select>
+                  </div>
+                ))}
+                <button
+                  onClick={handleBulkApply}
+                  disabled={applyingBulk}
+                  className="ml-auto px-3 py-1 bg-brand-700 text-white rounded-full text-[12px] font-semibold hover:bg-brand-900 disabled:opacity-60 transition-colors"
+                >
+                  {applyingBulk ? '적용 중…' : '일괄 적용'}
+                </button>
+              </div>
+            )}
             <div className="divide-y divide-ink-50">
               {segments.length === 0 ? (
                 <p className="text-[13px] text-ink-400 text-center py-8">전사 결과가 없습니다.</p>
@@ -604,6 +713,7 @@ export default function SessionDetailPage() {
                 })
               )}
             </div>
+            </>)}
           </div>
         )}
 
