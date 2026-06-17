@@ -7,6 +7,7 @@ export type SessionStatus =
   | 'ANALYSIS_REQUESTED'
   | 'ANALYSIS_PROCESSING'
   | 'ANALYSIS_COMPLETED'
+  | 'REPORT_GENERATING'
   | 'REPORT_READY'
   | 'FAILED'
   | 'DELETED'

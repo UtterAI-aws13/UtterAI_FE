@@ -22,7 +22,7 @@ const STEPS = [
 function statusToStep(s: SessionStatus): Step {
   if (s === 'CREATED' || s === 'AUDIO_UPLOADING') return 1
   if (s === 'AUDIO_UPLOADED' || s === 'ANALYSIS_REQUESTED' || s === 'ANALYSIS_PROCESSING' || s === 'FAILED') return 2
-  if (s === 'ANALYSIS_COMPLETED') return 3
+  if (s === 'ANALYSIS_COMPLETED' || s === 'REPORT_GENERATING') return 3
   return 4
 }
 
@@ -57,7 +57,6 @@ export default function SessionDetailPage() {
 
   const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null)
   const pollRef                       = useRef<ReturnType<typeof setInterval> | null>(null)
-  const reportPollRef                 = useRef<ReturnType<typeof setInterval> | null>(null)
   const [cancelling, setCancelling]   = useState(false)
   const [awaitingReport, setAwaitingReport] = useState(false)
 
@@ -110,7 +109,10 @@ export default function SessionDetailPage() {
           if (ignore) return
           setTranscript(txRes.data)
           const segRes = await transcriptsApi.listSegments(txRes.data.id)
-          if (!ignore) setSegments(segRes.data)
+          if (!ignore) {
+            setSegments(segRes.data)
+            if (sess.status === 'REPORT_GENERATING') setAwaitingReport(true)
+          }
         }
         if (s === 4) {
           const [txRes, reportRes] = await Promise.all([
@@ -164,8 +166,35 @@ export default function SessionDetailPage() {
   }, [step, id])
 
   useEffect(() => {
-    return () => { if (reportPollRef.current) clearInterval(reportPollRef.current) }
-  }, [])
+    if (!awaitingReport || !id) return
+    const interval = setInterval(async () => {
+      const { data: sess } = await sessionsApi.get(id)
+      setSession(sess)
+      if (sess.status === 'REPORT_READY') {
+        setAwaitingReport(false)
+        clearInterval(interval)
+        const [txRes, reportRes] = await Promise.all([
+          transcriptsApi.getBySession(id),
+          reportsApi.list({ session_id: id }),
+        ])
+        setTranscript(txRes.data)
+        const segs = await transcriptsApi.listSegments(txRes.data.id)
+        setSegments(segs.data)
+        if (reportRes.data.length > 0) {
+          const r = reportRes.data[0]
+          setReport(r)
+          const rSegs = await reportsApi.listSegments(r.id)
+          setReportSegments(rSegs.data)
+        }
+        setStep(4)
+      } else if (sess.status === 'FAILED') {
+        setAwaitingReport(false)
+        clearInterval(interval)
+        showToast({ title: '리포트 생성에 실패했습니다', kind: 'error' })
+      }
+    }, 10_000)
+    return () => clearInterval(interval)
+  }, [awaitingReport, id])
 
   // ── Upload ────────────────────────────────────────────────────
   const handleFileUpload = async (file: File) => {
@@ -297,35 +326,8 @@ export default function SessionDetailPage() {
       await transcriptsApi.finalize(transcript.id)
       showToast({ title: '전사가 확정되었습니다. 리포트를 생성하고 있습니다.', kind: 'success' })
       setAwaitingReport(true)
-      reportPollRef.current = setInterval(async () => {
-        const { data: sess } = await sessionsApi.get(id)
-        setSession(sess)
-        if (sess.status === 'REPORT_READY') {
-          setAwaitingReport(false)
-          if (reportPollRef.current) clearInterval(reportPollRef.current)
-          const [txRes, reportRes] = await Promise.all([
-            transcriptsApi.getBySession(id),
-            reportsApi.list({ session_id: id }),
-          ])
-          setTranscript(txRes.data)
-          const segs = await transcriptsApi.listSegments(txRes.data.id)
-          setSegments(segs.data)
-          if (reportRes.data.length > 0) {
-            const r = reportRes.data[0]
-            setReport(r)
-            const rSegs = await reportsApi.listSegments(r.id)
-            setReportSegments(rSegs.data)
-          }
-          setStep(4)
-        } else if (sess.status === 'FAILED') {
-          setAwaitingReport(false)
-          if (reportPollRef.current) clearInterval(reportPollRef.current)
-          showToast({ title: '리포트 생성에 실패했습니다', kind: 'error' })
-        }
-      }, 10_000)
     } catch {
       showToast({ title: '전사 확정에 실패했습니다', kind: 'error' })
-      setAwaitingReport(false)
     } finally {
       setConfirming(false)
     }

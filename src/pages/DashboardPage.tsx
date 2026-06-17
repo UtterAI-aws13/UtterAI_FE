@@ -31,10 +31,12 @@ export default function DashboardPage() {
   useEffect(() => {
     Promise.all([sessionsApi.list(), patientsApi.list()])
       .then(([sessRes, patientRes]) => {
-        setSessions(sessRes.data)
-        setPatients(patientRes.data)
+        const sess = Array.isArray(sessRes.data) ? sessRes.data : []
+        const pats = Array.isArray(patientRes.data) ? patientRes.data : []
+        setSessions(sess)
+        setPatients(pats)
         const map: Record<string, Patient> = {}
-        patientRes.data.forEach((p) => { map[p.id] = p })
+        pats.forEach((p) => { map[p.id] = p })
         setPatientMap(map)
       })
       .catch(() => showToast({ title: '데이터를 불러오지 못했습니다', kind: 'error' }))
