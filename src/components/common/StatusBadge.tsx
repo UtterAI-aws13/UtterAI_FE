@@ -8,6 +8,7 @@ const STATUS_MAP: Record<SessionStatus, { label: string; className: string }> = 
   ANALYSIS_REQUESTED:   { label: '분석 요청',   className: 'bg-violet-100 text-violet-700' },
   ANALYSIS_PROCESSING:  { label: '분석 중',     className: 'bg-amber-100 text-amber-700' },
   ANALYSIS_COMPLETED:   { label: '분석 완료',   className: 'bg-brand-100 text-brand-700' },
+  REPORT_GENERATING:    { label: '리포트 생성 중', className: 'bg-amber-100 text-amber-700' },
   REPORT_READY:         { label: '리포트 완료', className: 'bg-green-100 text-green-700' },
   FAILED:               { label: '실패',        className: 'bg-red-100 text-red-700' },
   DELETED:              { label: '삭제됨',      className: 'bg-ink-100 text-ink-400' },
