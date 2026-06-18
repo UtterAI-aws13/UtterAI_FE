@@ -144,22 +144,33 @@ export default function SessionDetailPage() {
     }
     pollRef.current = setInterval(async () => {
       if (!id) return
-      const { data: sess } = await sessionsApi.get(id)
-      setSession(sess)
-      const newStep = statusToStep(sess.status)
-      if (newStep !== 2) {
-        setStep(newStep)
-        if (pollRef.current) clearInterval(pollRef.current)
-        if (newStep === 3) {
-          transcriptsApi.getBySession(id).then(async ({ data: tx }) => {
-            setTranscript(tx)
-            const segs = await transcriptsApi.listSegments(tx.id)
-            setSegments(segs.data)
-          })
+      try {
+        const { data: sess } = await sessionsApi.get(id)
+        setSession(sess)
+        const newStep = statusToStep(sess.status)
+        // FAILED는 step 2로 매핑되지만 터미널 상태이므로 폴링을 중단한다
+        if (sess.status === 'FAILED') {
+          if (pollRef.current) clearInterval(pollRef.current)
+          return
         }
-      } else {
-        const jobRes = await analysisApi.list({ session_id: id })
-        if (jobRes.data.length > 0) setAnalysisJob(jobRes.data[0])
+        if (newStep !== 2) {
+          setStep(newStep)
+          if (pollRef.current) clearInterval(pollRef.current)
+          if (newStep === 3) {
+            // 분석 완료 → step 3로 전환 시 이미 REPORT_GENERATING이면 awaitingReport를 켠다
+            if (sess.status === 'REPORT_GENERATING') setAwaitingReport(true)
+            transcriptsApi.getBySession(id).then(async ({ data: tx }) => {
+              setTranscript(tx)
+              const segs = await transcriptsApi.listSegments(tx.id)
+              setSegments(segs.data)
+            })
+          }
+        } else {
+          const jobRes = await analysisApi.list({ session_id: id })
+          if (jobRes.data.length > 0) setAnalysisJob(jobRes.data[0])
+        }
+      } catch {
+        // 네트워크 오류 시 다음 인터벌에서 재시도
       }
     }, 10_000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
@@ -167,30 +178,48 @@ export default function SessionDetailPage() {
 
   useEffect(() => {
     if (!awaitingReport || !id) return
+    let stopped = false
     const interval = setInterval(async () => {
-      const { data: sess } = await sessionsApi.get(id)
-      setSession(sess)
-      if (sess.status === 'REPORT_READY') {
-        setAwaitingReport(false)
-        clearInterval(interval)
-        const [txRes, reportRes] = await Promise.all([
-          transcriptsApi.getBySession(id),
-          reportsApi.list({ session_id: id }),
-        ])
-        setTranscript(txRes.data)
-        const segs = await transcriptsApi.listSegments(txRes.data.id)
-        setSegments(segs.data)
-        if (reportRes.data.length > 0) {
-          const r = reportRes.data[0]
-          setReport(r)
-          const rSegs = await reportsApi.listSegments(r.id)
-          setReportSegments(rSegs.data)
+      if (stopped) return
+      try {
+        const { data: sess } = await sessionsApi.get(id)
+        setSession(sess)
+        if (sess.status === 'REPORT_READY') {
+          stopped = true
+          setAwaitingReport(false)
+          clearInterval(interval)
+          const [txRes, reportRes] = await Promise.all([
+            transcriptsApi.getBySession(id),
+            reportsApi.list({ session_id: id }),
+          ])
+          setTranscript(txRes.data)
+          const segs = await transcriptsApi.listSegments(txRes.data.id)
+          setSegments(segs.data)
+          if (reportRes.data.length > 0) {
+            const r = reportRes.data[0]
+            setReport(r)
+            const rSegs = await reportsApi.listSegments(r.id)
+            setReportSegments(rSegs.data)
+          }
+          setStep(4)
+        } else if (sess.status === 'FAILED' || sess.status === 'DELETED') {
+          stopped = true
+          setAwaitingReport(false)
+          clearInterval(interval)
+          showToast({ title: '리포트 생성에 실패했습니다', kind: 'error' })
         }
-        setStep(4)
-      } else if (sess.status === 'FAILED') {
-        setAwaitingReport(false)
-        clearInterval(interval)
-        showToast({ title: '리포트 생성에 실패했습니다', kind: 'error' })
+        // REPORT_GENERATING 외 예상치 못한 상태도 무한 폴링을 방지하기 위해 체크
+        else if (
+          sess.status !== 'REPORT_GENERATING' &&
+          sess.status !== 'ANALYSIS_COMPLETED'
+        ) {
+          stopped = true
+          setAwaitingReport(false)
+          clearInterval(interval)
+          showToast({ title: `예상치 못한 상태입니다: ${sess.status}`, kind: 'error' })
+        }
+      } catch {
+        // 네트워크 오류 시 다음 인터벌에서 재시도 (interval은 유지)
       }
     }, 10_000)
     return () => clearInterval(interval)
