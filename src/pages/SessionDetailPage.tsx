@@ -212,6 +212,8 @@ export default function SessionDetailPage() {
       setUploadStep('AI 분석 요청 중…')
       const { data: job } = await analysisApi.create({ session_id: id, audio_file_id: audioFile.id })
       setAnalysisJob(job)
+      setTranscript(null)
+      setSegments([])
       showToast({ title: '음성 파일이 업로드되었습니다', body: 'AI 분석을 시작합니다.', kind: 'success' })
       await fetchSession()
     } catch (err) {
@@ -246,6 +248,8 @@ export default function SessionDetailPage() {
     try {
       const { data: job } = await analysisApi.create({ session_id: id, audio_file_id: analysisJob.audio_file_id })
       setAnalysisJob(job)
+      setTranscript(null)
+      setSegments([])
       await fetchSession()
     } catch (err) {
       console.error('[request-analysis]', err)
