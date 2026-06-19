@@ -1,48 +1,49 @@
 import { apiClient } from './client'
 
-export type ReportStatus = 'READY' | 'REGENERATING' | 'DELETED'
+export type ReportStatus = 'DRAFT' | 'REVIEWING' | 'APPROVED' | 'FINALIZED' | 'DELETED'
+export type ReportSegmentType = 'SUBJECTIVE' | 'OBJECTIVE' | 'ASSESSMENT' | 'PLAN' | 'CUSTOM'
 
 export interface Report {
   id: string
   session_id: string
-  result_id: string | null
-  soap_note_id: string | null
-  generated_by: string
-  title: string
-  template_type: string
-  content: string
-  memo: string | null
+  job_id: string
+  template_id: string | null
   status: ReportStatus
-  created_at: string
+  model_used: string | null
+  clinical_flags: unknown[] | null
+  evidence_chunk_ids: unknown[] | null
+  requires_human_review: boolean
+  s3_key: string | null
+  generated_at: string | null
   updated_at: string
 }
 
-export interface CreateReportPayload {
-  session_id: string
-  result_id: string
-  template_type: string
-}
-
-export interface UpdateReportPayload {
-  title?: string
-  content?: string
-  memo?: string
+export interface ReportSegment {
+  id: string
+  report_id: string
+  segment_type: ReportSegmentType
+  segment_index: number
+  title: string | null
+  ai_content: string | null
+  content: string | null
+  is_edited: boolean
+  edited_by: string | null
+  edited_at: string | null
+  created_at: string
 }
 
 export const reportsApi = {
-  list: (params?: { childId?: string }) =>
+  list: (params?: { session_id?: string; patient_ref_id?: string }) =>
     apiClient.get<Report[]>('/reports', { params }),
+  get:  (id: string) => apiClient.get<Report>(`/reports/${id}`),
 
-  get: (id: string) =>
-    apiClient.get<Report>(`/reports/${id}`),
+  listSegments: (reportId: string) =>
+    apiClient.get<ReportSegment[]>(`/reports/${reportId}/segments`),
+  updateSegment: (reportId: string, segmentId: string, payload: { content?: string; title?: string }) =>
+    apiClient.patch<ReportSegment>(`/reports/${reportId}/segments/${segmentId}`, payload),
 
-  create: (payload: CreateReportPayload) =>
-    apiClient.post<Report>('/reports', payload),
+  updateStatus: (reportId: string, status: ReportStatus) =>
+    apiClient.patch<Report>(`/reports/${reportId}/status`, { status }),
 
-  update: (id: string, payload: UpdateReportPayload) =>
-    apiClient.patch<Report>(`/reports/${id}`, payload),
-
-  // plain text 파일 다운로드
-  download: (id: string) =>
-    apiClient.get(`/reports/${id}/download`, { responseType: 'blob' }),
+  download: (id: string) => apiClient.get(`/reports/${id}/download`, { responseType: 'blob' }),
 }

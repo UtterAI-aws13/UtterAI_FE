@@ -1,99 +1,95 @@
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { patientsApi, type Patient } from '@/api/patients'
+import { sessionsApi, type Session } from '@/api/sessions'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Icon } from '@/components/common/Icon'
-import { cn } from '@/lib/utils'
-import { childrenApi } from '@/api/children'
-import { sessionsApi } from '@/api/sessions'
+import { PatientFormModal } from '@/components/common/PatientFormModal'
+import { cn, computeAge, formatDate } from '@/lib/utils'
+import { useToast } from '@/hooks/useToast'
 
-const SESSION_TYPE_LABEL: Record<string, string> = { INDIVIDUAL: '개별', GROUP: '그룹' }
-
-function calcAge(birthDate: string | null): string {
-  if (!birthDate) return ''
-  const birth = new Date(birthDate)
-  const now = new Date()
-  const totalMonths =
-    (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth())
-  return `${Math.floor(totalMonths / 12)}세 ${totalMonths % 12}개월`
-}
-
-function fmtDate(iso: string) {
-  return iso.slice(0, 10).replaceAll('-', '.')
-}
-
-export default function ChildDetailPage() {
-  const { id } = useParams()
+export default function PatientDetailPage() {
+  const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { showToast } = useToast()
 
-  const { data: child, isLoading: childLoading } = useQuery({
-    queryKey: ['child', id],
-    queryFn: () => childrenApi.get(id!).then((r) => r.data),
-    enabled: !!id,
-  })
+  const [patient, setPatient] = useState<Patient | null>(null)
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showEdit, setShowEdit] = useState(false)
 
-  const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
-    queryKey: ['sessions', { child_id: id }],
-    queryFn: () => sessionsApi.list({ child_id: id }).then((r) => r.data),
-    enabled: !!id,
-  })
+  useEffect(() => {
+    if (!id) return
+    let ignore = false
+    Promise.all([
+      patientsApi.get(id),
+      sessionsApi.list({ patient_ref_id: id }),
+    ])
+      .then(([patientRes, sessionsRes]) => {
+        if (ignore) return
+        setPatient(patientRes.data)
+        setSessions(sessionsRes.data)
+      })
+      .catch(() => { if (!ignore) showToast({ title: '데이터를 불러오지 못했습니다', kind: 'error' }) })
+      .finally(() => { if (!ignore) setLoading(false) })
+    return () => { ignore = true }
+  }, [id])
 
-  if (childLoading) {
-    return (
-      <div className="px-8 pt-7">
-        <div className="text-ink-400 text-[13px]">불러오는 중…</div>
-      </div>
-    )
+  if (loading) {
+    return <div className="px-8 pt-7 text-[13px] text-ink-400">불러오는 중…</div>
   }
 
-  if (!child) {
-    return (
-      <div className="px-8 pt-7">
-        <div className="text-red-500 text-[13px]">아동 정보를 불러올 수 없습니다.</div>
-      </div>
-    )
+  if (!patient) {
+    return <div className="px-8 pt-7 text-[13px] text-ink-500">환자 정보를 찾을 수 없습니다.</div>
   }
 
-  const genderLabel = child.gender === 'F' ? '여아' : child.gender === 'M' ? '남아' : '미입력'
-  const age = calcAge(child.birth_date)
+  const genderLabel = patient.gender === 'F' ? '여성' : patient.gender === 'M' ? '남성' : '미입력'
 
   return (
     <div>
       <div className="px-8 pt-7 pb-5 flex items-center gap-4">
         <button
-          onClick={() => navigate('/children')}
+          onClick={() => navigate('/patients')}
           className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-500 hover:bg-ink-100 transition-colors"
         >
           <Icon name="arrowLeft" size={16} />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-ink-800 tracking-tight">{child.name}</h1>
+          <h1 className="text-2xl font-bold text-ink-800 tracking-tight">{patient.name}</h1>
           <p className="text-[13px] text-ink-500 mt-0.5">
-            {age}{age ? ' · ' : ''}{genderLabel} · 등록일 {fmtDate(child.created_at)}
+            {computeAge(patient.birth_date)} · {genderLabel} · 등록일 {formatDate(patient.created_at)}
           </p>
         </div>
       </div>
 
       <div className="px-8 pb-8 grid grid-cols-3 gap-5">
-        {/* Left: Info card */}
+        {/* Info card */}
         <div className="col-span-1 flex flex-col gap-4">
           <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-5">
             <div className="flex items-center gap-3 mb-4 pb-4 border-b border-ink-100">
               <div className={cn(
                 'w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold',
-                child.gender === 'F' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700',
+                patient.gender === 'F' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700',
               )}>
-                {child.name[0]}
+                {patient.name[0]}
               </div>
-              <div>
-                <p className="font-bold text-[16px] text-ink-800">{child.name}</p>
-                <p className="text-[12px] text-ink-500">{child.birth_date ? fmtDate(child.birth_date) : '생년월일 미입력'}</p>
+              <div className="flex-1">
+                <p className="font-bold text-[16px] text-ink-800">{patient.name}</p>
+                <p className="text-[12px] text-ink-500">{formatDate(patient.birth_date)}</p>
               </div>
+              <button
+                onClick={() => setShowEdit(true)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-ink-400 hover:bg-ink-100 hover:text-ink-700 transition-colors"
+                title="정보 수정"
+              >
+                <Icon name="edit" size={14} />
+              </button>
             </div>
             <div className="flex flex-col gap-3">
               {[
-                { label: '나이',      value: age || '—' },
-                { label: '성별',      value: genderLabel },
+                { label: '성별',     value: genderLabel },
                 { label: '전체 세션', value: `${sessions.length}회` },
+                { label: '최근 세션', value: sessions.length > 0 ? formatDate(sessions[0].session_date) : '없음' },
               ].map((r) => (
                 <div key={r.label} className="flex justify-between items-start">
                   <span className="text-[12px] text-ink-500">{r.label}</span>
@@ -103,15 +99,15 @@ export default function ChildDetailPage() {
             </div>
           </div>
 
-          {child.memo && (
+          {patient.memo && (
             <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-5">
               <p className="text-[13px] font-semibold text-ink-800 mb-2">메모</p>
-              <p className="text-[12px] text-ink-500 leading-relaxed">{child.memo}</p>
+              <p className="text-[12px] text-ink-500 leading-relaxed">{patient.memo}</p>
             </div>
           )}
         </div>
 
-        {/* Right: Session list */}
+        {/* Session list */}
         <div className="col-span-2">
           <div className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100">
@@ -124,10 +120,8 @@ export default function ChildDetailPage() {
               </button>
             </div>
 
-            {sessionsLoading ? (
-              <div className="py-12 text-center text-ink-400 text-[13px]">불러오는 중…</div>
-            ) : sessions.length === 0 ? (
-              <div className="py-12 text-center text-ink-400 text-[13px]">아직 세션이 없습니다.</div>
+            {sessions.length === 0 ? (
+              <div className="py-12 text-center text-[13px] text-ink-400">세션이 없습니다.</div>
             ) : (
               <table className="w-full text-[13px]">
                 <thead>
@@ -144,10 +138,10 @@ export default function ChildDetailPage() {
                       onClick={() => navigate(`/sessions/${s.id}`)}
                       className="border-t border-ink-100 hover:bg-brand-25 cursor-pointer transition-colors"
                     >
-                      <td className="px-5 py-3 font-mono-num text-ink-500">{fmtDate(s.session_date)}</td>
+                      <td className="px-5 py-3 font-mono-num text-ink-500">{formatDate(s.session_date)}</td>
                       <td className="px-5 py-3">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-ink-100 text-ink-600">
-                          {SESSION_TYPE_LABEL[s.session_type ?? ''] ?? s.session_type ?? '—'}
+                          {s.session_type ?? '—'}
                         </span>
                       </td>
                       <td className="px-5 py-3"><StatusBadge status={s.status} /></td>
@@ -159,6 +153,14 @@ export default function ChildDetailPage() {
           </div>
         </div>
       </div>
+
+      {showEdit && patient && (
+        <PatientFormModal
+          patient={patient}
+          onClose={() => setShowEdit(false)}
+          onDone={(updated) => setPatient(updated)}
+        />
+      )}
     </div>
   )
 }

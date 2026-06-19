@@ -1,117 +1,118 @@
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { reportsApi, type Report, type ReportStatus } from '@/api/reports'
 import { Icon } from '@/components/common/Icon'
-import { cn } from '@/lib/utils'
-import { reportsApi, type ReportStatus } from '@/api/reports'
-import { sessionsApi } from '@/api/sessions'
-import { childrenApi } from '@/api/children'
+import { cn, formatDate } from '@/lib/utils'
+import { useToast } from '@/hooks/useToast'
 
-function fmtDate(iso: string) {
-  return iso.slice(0, 10).replaceAll('-', '.')
-}
-
-const STATUS_LABEL: Record<ReportStatus, string> = {
-  READY:        '발행됨',
-  REGENERATING: '재생성 중',
-  DELETED:      '삭제됨',
-}
-
-function statusChipClass(s: ReportStatus) {
-  return cn(
-    'inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold',
-    s === 'READY'        ? 'bg-green-100 text-green-700' :
-    s === 'REGENERATING' ? 'bg-amber-100 text-amber-700' :
-                           'bg-ink-100 text-ink-500',
-  )
+const STATUS_LABEL: Record<ReportStatus, { label: string; cls: string }> = {
+  DRAFT:     { label: '초안',    cls: 'bg-amber-100 text-amber-700' },
+  REVIEWING: { label: '검토 중', cls: 'bg-blue-100 text-blue-700' },
+  APPROVED:  { label: '승인됨',  cls: 'bg-green-100 text-green-700' },
+  FINALIZED: { label: '확정됨',  cls: 'bg-brand-100 text-brand-700' },
+  DELETED:   { label: '삭제됨',  cls: 'bg-ink-100 text-ink-500' },
 }
 
 export default function ReportsPage() {
   const navigate = useNavigate()
+  const { showToast } = useToast()
+  const [reports, setReports] = useState<Report[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const { data: reports = [], isLoading } = useQuery({
-    queryKey: ['reports'],
-    queryFn: () => reportsApi.list().then((r) => r.data),
-  })
+  useEffect(() => {
+    let ignore = false
+    reportsApi.list()
+      .then(({ data }) => { if (!ignore) setReports(data) })
+      .catch(() => { if (!ignore) showToast({ title: '리포트 목록을 불러오지 못했습니다', kind: 'error' }) })
+      .finally(() => { if (!ignore) setLoading(false) })
+    return () => { ignore = true }
+  }, [])
 
-  const { data: sessions = [] } = useQuery({
-    queryKey: ['sessions'],
-    queryFn: () => sessionsApi.list().then((r) => r.data),
-  })
-
-  const { data: children = [] } = useQuery({
-    queryKey: ['children'],
-    queryFn: () => childrenApi.list().then((r) => r.data),
-  })
-
-  const sessionMap = Object.fromEntries(sessions.map((s) => [s.id, s]))
-  const childMap = Object.fromEntries(children.map((c) => [c.id, c]))
-
-  const visible = reports.filter((r) => r.status !== 'DELETED')
+  const handleDownload = async (report: Report) => {
+    try {
+      const { data } = await reportsApi.download(report.id)
+      const url = URL.createObjectURL(new Blob([data]))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `report-${report.id.slice(-8)}.txt`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      showToast({ title: '다운로드에 실패했습니다', kind: 'error' })
+    }
+  }
 
   return (
     <div>
       <div className="px-8 pt-7 pb-5">
         <h1 className="text-2xl font-bold text-ink-800 tracking-tight">리포트</h1>
-        <p className="text-[13px] text-ink-500 mt-1">총 {visible.length}개 리포트</p>
+        <p className="text-[13px] text-ink-500 mt-1">총 {reports.length}개 리포트</p>
       </div>
 
       <div className="px-8 pb-8">
-        <div className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden">
-          {isLoading ? (
-            <div className="py-16 text-center text-ink-400 text-[13px]">불러오는 중…</div>
-          ) : visible.length === 0 ? (
-            <div className="py-16 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-brand-50 flex items-center justify-center text-brand-600 mx-auto mb-4">
-                <Icon name="fileText" size={28} strokeWidth={1.8} />
-              </div>
-              <p className="text-[15px] font-semibold text-ink-800">아직 리포트가 없습니다</p>
-              <p className="text-[12px] text-ink-500 mt-1.5">세션 분석을 완료하면 리포트를 생성할 수 있어요.</p>
-            </div>
-          ) : (
+        {loading ? (
+          <div className="text-center py-12 text-[13px] text-ink-400">불러오는 중…</div>
+        ) : reports.length === 0 ? (
+          <div className="bg-white rounded-xl border border-ink-200 shadow-sm py-16 text-center">
+            <p className="text-[15px] font-semibold text-ink-800">리포트가 없습니다</p>
+            <p className="text-[12px] text-ink-500 mt-1.5">세션 분석을 완료하면 리포트가 생성됩니다.</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden">
             <table className="w-full text-[13px] border-collapse">
               <thead>
                 <tr className="bg-ink-50 border-b border-ink-100">
-                  {['아동', '제목', '날짜', '상태', ''].map((h, i) => (
-                    <th
-                      key={i}
-                      className="py-2.5 px-5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider text-left"
-                    >
-                      {h}
-                    </th>
+                  {['세션', '모델', '상태', '생성일', ''].map((h, i) => (
+                    <th key={i} className={cn(
+                      'py-2.5 px-5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider',
+                      i >= 4 ? 'text-right' : 'text-left',
+                    )}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {visible.map((r) => {
-                  const session = sessionMap[r.session_id]
-                  const child = session ? childMap[session.child_id] : undefined
+                {reports.map((r) => {
+                  const statusInfo = STATUS_LABEL[r.status] ?? STATUS_LABEL.DRAFT
                   return (
-                    <tr
-                      key={r.id}
-                      className="border-t border-ink-100 hover:bg-brand-25 transition-colors cursor-pointer"
-                      onClick={() => navigate(`/sessions/${r.session_id}`)}
-                    >
-                      <td className="px-5 py-3 font-semibold text-ink-800">{child?.name ?? '—'}</td>
-                      <td className="px-5 py-3 text-ink-700 max-w-[280px] truncate">{r.title}</td>
-                      <td className="px-5 py-3 font-mono-num text-ink-500">{fmtDate(r.created_at)}</td>
+                    <tr key={r.id} className="border-t border-ink-100 hover:bg-brand-25 transition-colors">
+                      <td className="px-5 py-3 font-mono-num text-ink-500 text-[12px]">
+                        {r.session_id.slice(-8)}
+                      </td>
+                      <td className="px-5 py-3 text-ink-500 text-[12px]">
+                        {r.model_used ?? '—'}
+                      </td>
                       <td className="px-5 py-3">
-                        <span className={statusChipClass(r.status)}>{STATUS_LABEL[r.status]}</span>
+                        <span className={cn('inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold', statusInfo.cls)}>
+                          {statusInfo.label}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 font-mono-num text-ink-500">
+                        {formatDate(r.generated_at ?? r.updated_at)}
                       </td>
                       <td className="px-5 py-3 text-right">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); navigate(`/sessions/${r.session_id}`) }}
-                          className="inline-flex items-center gap-1 text-[12px] text-brand-600 font-semibold hover:text-brand-800"
-                        >
-                          보기 <Icon name="chevronRight" size={12} strokeWidth={2.2} />
-                        </button>
+                        <div className="inline-flex gap-2 items-center">
+                          <button
+                            onClick={() => navigate(`/sessions/${r.session_id}`)}
+                            className="inline-flex items-center gap-1 text-[12px] text-brand-600 font-semibold hover:text-brand-800"
+                          >
+                            보기 <Icon name="chevronRight" size={12} strokeWidth={2.2} />
+                          </button>
+                          <button
+                            onClick={() => handleDownload(r)}
+                            className="w-6 h-6 flex items-center justify-center rounded-md text-ink-400 hover:bg-ink-100 hover:text-ink-700 transition-colors"
+                            title="다운로드"
+                          >
+                            <Icon name="download" size={13} strokeWidth={2.2} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )

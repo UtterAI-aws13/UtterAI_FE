@@ -1,310 +1,485 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { sessionsApi, type Session, type SessionStatus } from '@/api/sessions'
+import { patientsApi, type Patient } from '@/api/patients'
+import { audioApi } from '@/api/audio'
+import { analysisApi, type AnalysisJob } from '@/api/analysis'
+import { transcriptsApi, type Transcript, type TranscriptSegment, type SpeakerRole } from '@/api/transcripts'
+import { reportsApi, type Report, type ReportSegment, type ReportSegmentType } from '@/api/reports'
 import { Icon } from '@/components/common/Icon'
 import { useToast } from '@/hooks/useToast'
-import { cn } from '@/lib/utils'
-import type { SessionStatus } from '@/api/sessions'
-
-// UI 전용 타입 — 나중에 BE 연동 시 transcript.ts / soapNotes.ts 타입으로 교체
-type Utterance = { t: string; speaker: 'CHILD' | 'THERAPIST' | 'UNKNOWN'; text: string; edited?: boolean }
-type Metric    = { label: string; desc: string; value: string; delta: string; dir: 'up' | 'down'; good: boolean }
-type SoapNote  = { S: string; O: string; A: string; P: string }
+import { cn, formatDate, formatMs } from '@/lib/utils'
 
 type Step = 1 | 2 | 3 | 4
 
 const STEPS = [
   { id: 1, label: '음성 업로드', sub: 'Upload' },
   { id: 2, label: 'AI 분석',    sub: 'Analyze' },
-  { id: 3, label: '전사 검토',   sub: 'Review' },
-  { id: 4, label: '리포트',      sub: 'Report' },
+  { id: 3, label: '전사 검토',  sub: 'Review' },
+  { id: 4, label: '리포트',     sub: 'Report' },
 ]
-
-const SESSION_TYPE_LABEL: Record<string, string> = { INDIVIDUAL: '개별', GROUP: '그룹' }
-
-function fmtDate(iso: string) {
-  return iso.slice(0, 10).replaceAll('-', '.')
-}
-
-function calcAge(birthDate: string | null): string {
-  if (!birthDate) return ''
-  const birth = new Date(birthDate)
-  const now = new Date()
-  const totalMonths =
-    (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth())
-  return `${Math.floor(totalMonths / 12)}세 ${totalMonths % 12}개월`
-}
 
 function statusToStep(s: SessionStatus): Step {
   if (s === 'CREATED' || s === 'AUDIO_UPLOADING') return 1
   if (s === 'AUDIO_UPLOADED' || s === 'ANALYSIS_REQUESTED' || s === 'ANALYSIS_PROCESSING' || s === 'FAILED') return 2
-  if (s === 'ANALYSIS_COMPLETED') return 3
+  if (s === 'ANALYSIS_COMPLETED' || s === 'REPORT_GENERATING') return 3
   return 4
 }
 
-const speakerMap = {
-  CHILD:     { label: '아동',   bg: 'bg-brand-100', fg: 'text-brand-700' },
-  THERAPIST: { label: '치료사', bg: 'bg-blue-100',  fg: 'text-blue-700' },
+const speakerMap: Record<SpeakerRole, { label: string; bg: string; fg: string }> = {
+  PATIENT:   { label: '환자',   bg: 'bg-brand-100', fg: 'text-brand-700' },
+  SLP:       { label: '치료사', bg: 'bg-blue-100',  fg: 'text-blue-700' },
+  GUARDIAN:  { label: '보호자', bg: 'bg-purple-100', fg: 'text-purple-700' },
   UNKNOWN:   { label: '미상',   bg: 'bg-ink-100',   fg: 'text-ink-600' },
-} as const
+}
 
-const ACTIVE_STATUSES: AnalysisJobStatus[] = ['REQUESTED', 'QUEUED', 'PROCESSING']
-const DONE_STATUSES: AnalysisJobStatus[]   = ['COMPLETED', 'FAILED', 'CANCELLED', 'EXPIRED']
+const SEGMENT_TYPE_LABELS: Record<ReportSegmentType, string> = {
+  SUBJECTIVE: 'Subjective — 주관적 정보',
+  OBJECTIVE:  'Objective — 객관적 정보',
+  ASSESSMENT: 'Assessment — 평가',
+  PLAN:       'Plan — 계획',
+  CUSTOM:     'Custom — 기타',
+}
 
 export default function SessionDetailPage() {
-  const { id } = useParams()
+  const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { showToast } = useToast()
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Step override: null means derive from session.status
-  const [stepOverride, setStepOverride] = useState<Step | null>(null)
+  const [session, setSession]       = useState<Session | null>(null)
+  const [patient, setPatient]       = useState<Patient | null>(null)
+  const [step, setStep]             = useState<Step>(1)
+  const [loading, setLoading]       = useState(true)
 
-  // Step 1
-  const [uploading, setUploading] = useState(false)
-  const [audioFileId, setAudioFileId] = useState<string | null>(null)
+  const [uploading, setUploading]   = useState(false)
+  const [uploadStep, setUploadStep] = useState('')
+  const fileInputRef                = useRef<HTMLInputElement>(null)
 
-  // Step 2
-  const [analysisJobId, setAnalysisJobId] = useState<string | null>(null)
-  const [analysisStatus, setAnalysisStatus] = useState<AnalysisJobStatus | null>(null)
-  const [startingAnalysis, setStartingAnalysis] = useState(false)
+  const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null)
+  const pollRef                       = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [cancelling, setCancelling]   = useState(false)
+  const [awaitingReport, setAwaitingReport] = useState(false)
 
-  // Step 3
-  const [transcript, setTranscript] = useState<Transcript | null>(null)
-  const [transcriptLoading, setTranscriptLoading] = useState(false)
+  const [transcript, setTranscript]     = useState<Transcript | null>(null)
+  const [segments, setSegments]         = useState<TranscriptSegment[]>([])
+  const [confirming, setConfirming]     = useState(false)
   const [editingSegId, setEditingSegId] = useState<string | null>(null)
-  const [editText, setEditText] = useState('')
-  const [speakerDropdownId, setSpeakerDropdownId] = useState<string | null>(null)
-  const [updatingSpeakerId, setUpdatingSpeakerId] = useState<string | null>(null)
-  const [confirming, setConfirming] = useState(false)
+  const [editText, setEditText]         = useState('')
+  const [editRole, setEditRole]         = useState<SpeakerRole>('UNKNOWN')
+  const [savingSeg, setSavingSeg]       = useState(false)
+  const [speakerRoleMap, setSpeakerRoleMap] = useState<Record<string, SpeakerRole>>({})
+  const [applyingBulk, setApplyingBulk]    = useState(false)
 
-  // Step 4
-  const [soapNote, setSoapNote] = useState<SoapNote | null>(null)
-  const [soapLoading, setSoapLoading] = useState(false)
-  const [report, setReport] = useState<Report | null>(null)
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
-  const [downloading, setDownloading] = useState(false)
+  const [report, setReport]               = useState<Report | null>(null)
+  const [reportSegments, setReportSegments] = useState<ReportSegment[]>([])
+  const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null)
+  const [editSegContent, setEditSegContent]     = useState('')
+  const [savingSegment, setSavingSegment]       = useState(false)
+  const [finalizingReport, setFinalizingReport] = useState(false)
 
-  // ── Data ──────────────────────────────────────────────────────────────────
-  const { data: session } = useQuery({
-    queryKey: ['session', id],
-    queryFn: () => sessionsApi.get(id!).then((r) => r.data),
-    enabled: !!id,
-  })
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting]           = useState(false)
 
-  const { data: child } = useQuery({
-    queryKey: ['child', session?.child_id],
-    queryFn: () => childrenApi.get(session!.child_id).then((r) => r.data),
-    enabled: !!session?.child_id,
-  })
-
-  const step: Step = stepOverride ?? (session ? statusToStep(session.status) : 1)
-
-  // ── Step 2: load existing analysis job & poll ─────────────────────────────
-  useEffect(() => {
-    if (step !== 2 || !id) return
-    analysisApi.list({ session_id: id }).then(({ data }) => {
-      const latest = [...data].sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      )[0]
-      if (latest) {
-        setAnalysisJobId(latest.id)
-        setAnalysisStatus(latest.status)
-        if (latest.status === 'COMPLETED') setStepOverride(3)
-      }
-    })
-  }, [step, id])
+  const fetchSession = useCallback(async () => {
+    if (!id) return
+    const { data } = await sessionsApi.get(id)
+    setSession(data)
+    setStep(statusToStep(data.status))
+    return data
+  }, [id])
 
   useEffect(() => {
-    if (step !== 2 || !analysisJobId) return
-    if (!ACTIVE_STATUSES.includes(analysisStatus as AnalysisJobStatus)) return
-
-    const interval = setInterval(async () => {
-      try {
-        const { data } = await analysisApi.get(analysisJobId)
-        setAnalysisStatus(data.status)
-        if (data.status === 'COMPLETED') {
-          setStepOverride(3)
-          showToast({ title: '분석이 완료되었습니다', kind: 'success' })
-        } else if (DONE_STATUSES.includes(data.status)) {
-          showToast({ title: '분석에 실패했습니다', kind: 'error' })
+    if (!id) return
+    let ignore = false
+    setLoading(true)
+    sessionsApi.get(id)
+      .then(async ({ data: sess }) => {
+        if (ignore) return
+        setSession(sess)
+        const s = statusToStep(sess.status)
+        setStep(s)
+        await patientsApi.getByRef(sess.patient_ref_id).then(({ data }) => { if (!ignore) setPatient(data) }).catch(() => {})
+        if (ignore) return
+        if (s === 2) {
+          const jobRes = await analysisApi.list({ session_id: id })
+          if (!ignore && jobRes.data.length > 0) setAnalysisJob(jobRes.data[0])
         }
-      } catch { /* ignore */ }
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [step, analysisJobId, analysisStatus])
-
-  // ── Step 3: load transcript ───────────────────────────────────────────────
-  useEffect(() => {
-    if (step !== 3 || !id) return
-    setTranscriptLoading(true)
-    transcriptsApi.getBySession(id)
-      .then(({ data }) => setTranscript(data))
-      .catch(() => showToast({ title: '전사를 불러오지 못했습니다', kind: 'error' }))
-      .finally(() => setTranscriptLoading(false))
-  }, [step, id])
-
-  // ── Step 4: load SOAP note + report ──────────────────────────────────────
-  useEffect(() => {
-    if (step !== 4 || !id) return
-    setSoapLoading(true)
-    Promise.all([
-      soapNoteApi.list({ sessionId: id }),
-      sessionsApi.listReports(id),
-      sessionsApi.getAnalysisResult(id).catch(() => null),
-    ])
-      .then(([soapRes, reportRes, resultRes]) => {
-        setSoapNote(soapRes.data.find((n) => n.status !== 'DELETED') ?? null)
-        setReport(reportRes.data.find((r) => r.status !== 'DELETED') ?? null)
-        setAnalysisResult(resultRes?.data ?? null)
+        if (s === 3) {
+          const txRes = await transcriptsApi.getBySession(id)
+          if (ignore) return
+          setTranscript(txRes.data)
+          const segRes = await transcriptsApi.listSegments(txRes.data.id)
+          if (!ignore) {
+            setSegments(segRes.data)
+            if (sess.status === 'REPORT_GENERATING') setAwaitingReport(true)
+          }
+        }
+        if (s === 4) {
+          const [txRes, reportRes] = await Promise.all([
+            transcriptsApi.getBySession(id),
+            reportsApi.list({ session_id: id }),
+          ])
+          if (ignore) return
+          setTranscript(txRes.data)
+          const segs = await transcriptsApi.listSegments(txRes.data.id)
+          if (ignore) return
+          setSegments(segs.data)
+          if (reportRes.data.length > 0) {
+            const r = reportRes.data[0]
+            setReport(r)
+            const rSegs = await reportsApi.listSegments(r.id)
+            if (!ignore) setReportSegments(rSegs.data)
+          }
+        }
       })
-      .catch(() => showToast({ title: '데이터를 불러오지 못했습니다', kind: 'error' }))
-      .finally(() => setSoapLoading(false))
+      .catch(() => { if (!ignore) showToast({ title: '세션 정보를 불러오지 못했습니다', kind: 'error' }) })
+      .finally(() => { if (!ignore) setLoading(false) })
+    return () => { ignore = true }
+  }, [id])
+
+  useEffect(() => {
+    if (step !== 2) {
+      if (pollRef.current) clearInterval(pollRef.current)
+      return
+    }
+    pollRef.current = setInterval(async () => {
+      if (!id) return
+      try {
+        const { data: sess } = await sessionsApi.get(id)
+        setSession(sess)
+        const newStep = statusToStep(sess.status)
+        // FAILED는 step 2로 매핑되지만 터미널 상태이므로 폴링을 중단한다
+        if (sess.status === 'FAILED') {
+          if (pollRef.current) clearInterval(pollRef.current)
+          return
+        }
+        if (newStep !== 2) {
+          setStep(newStep)
+          if (pollRef.current) clearInterval(pollRef.current)
+          if (newStep === 3) {
+            // 분석 완료 → step 3로 전환 시 이미 REPORT_GENERATING이면 awaitingReport를 켠다
+            if (sess.status === 'REPORT_GENERATING') setAwaitingReport(true)
+            transcriptsApi.getBySession(id).then(async ({ data: tx }) => {
+              setTranscript(tx)
+              const segs = await transcriptsApi.listSegments(tx.id)
+              setSegments(segs.data)
+            })
+          }
+        } else {
+          const jobRes = await analysisApi.list({ session_id: id })
+          if (jobRes.data.length > 0) setAnalysisJob(jobRes.data[0])
+        }
+      } catch {
+        // 네트워크 오류 시 다음 인터벌에서 재시도
+      }
+    }, 10_000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [step, id])
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
-  const handleFileSelect = async (file: File) => {
+  useEffect(() => {
+    if (!awaitingReport || !id) return
+    let stopped = false
+    const interval = setInterval(async () => {
+      if (stopped) return
+      try {
+        const { data: sess } = await sessionsApi.get(id)
+        setSession(sess)
+        if (sess.status === 'REPORT_READY') {
+          stopped = true
+          setAwaitingReport(false)
+          clearInterval(interval)
+          const [txRes, reportRes] = await Promise.all([
+            transcriptsApi.getBySession(id),
+            reportsApi.list({ session_id: id }),
+          ])
+          setTranscript(txRes.data)
+          const segs = await transcriptsApi.listSegments(txRes.data.id)
+          setSegments(segs.data)
+          if (reportRes.data.length > 0) {
+            const r = reportRes.data[0]
+            setReport(r)
+            const rSegs = await reportsApi.listSegments(r.id)
+            setReportSegments(rSegs.data)
+          }
+          setStep(4)
+        } else if (sess.status === 'FAILED' || sess.status === 'DELETED') {
+          stopped = true
+          setAwaitingReport(false)
+          clearInterval(interval)
+          showToast({ title: '리포트 생성에 실패했습니다', kind: 'error' })
+        }
+        // REPORT_GENERATING 외 예상치 못한 상태도 무한 폴링을 방지하기 위해 체크
+        else if (
+          sess.status !== 'REPORT_GENERATING' &&
+          sess.status !== 'ANALYSIS_COMPLETED'
+        ) {
+          stopped = true
+          setAwaitingReport(false)
+          clearInterval(interval)
+          showToast({ title: `예상치 못한 상태입니다: ${sess.status}`, kind: 'error' })
+        }
+      } catch {
+        // 네트워크 오류 시 다음 인터벌에서 재시도 (interval은 유지)
+      }
+    }, 10_000)
+    return () => clearInterval(interval)
+  }, [awaitingReport, id])
+
+  // ── Upload ────────────────────────────────────────────────────
+  const handleFileUpload = async (file: File) => {
     if (!id) return
     setUploading(true)
     try {
-      const audioFile = await uploadSessionAudio(id, file)
-      setAudioFileId(audioFile.id)
-      setStepOverride(2)
-      showToast({ title: '음성 파일이 업로드되었습니다', kind: 'success' })
-    } catch {
-      showToast({ title: '업로드에 실패했습니다', kind: 'error' })
+      setUploadStep('presigned URL 발급 중…')
+      const { data: presigned } = await audioApi.presignedUrl({
+        file_name: file.name, content_type: file.type, session_id: id, file_size: file.size,
+      })
+      setUploadStep('S3에 업로드 중…')
+      await audioApi.uploadToS3(presigned.upload_url, file)
+      setUploadStep('업로드 확인 중…')
+      const { data: audioFile } = await audioApi.complete({ session_id: id, object_key: presigned.object_key })
+      setUploadStep('AI 분석 요청 중…')
+      const { data: job } = await analysisApi.create({ session_id: id, audio_file_id: audioFile.id })
+      setAnalysisJob(job)
+      setTranscript(null)
+      setSegments([])
+      showToast({ title: '음성 파일이 업로드되었습니다', body: 'AI 분석을 시작합니다.', kind: 'success' })
+      await fetchSession()
+    } catch (err) {
+      console.error('[upload]', err)
+      showToast({ title: '업로드에 실패했습니다', body: '파일 형식 및 네트워크를 확인해주세요.', kind: 'error' })
     } finally {
       setUploading(false)
+      setUploadStep('')
     }
   }
 
-  const handleStartAnalysis = async () => {
-    if (!id || !audioFileId) return
-    setStartingAnalysis(true)
+  // ── Analysis cancel ───────────────────────────────────────────
+  const handleCancelAnalysis = async () => {
+    if (!analysisJob) return
+    setCancelling(true)
     try {
-      const { data: job } = await analysisApi.create({ session_id: id, audio_file_id: audioFileId })
-      setAnalysisJobId(job.id)
-      setAnalysisStatus(job.status)
-      showToast({ title: '분석을 요청했습니다', kind: 'success' })
-    } catch {
+      const { data } = await analysisApi.cancel(analysisJob.id)
+      setAnalysisJob(data.job)
+      showToast({ title: '분석이 취소되었습니다', kind: 'info' })
+      await fetchSession()
+    } catch (err) {
+      console.error('[cancel]', err)
+      showToast({ title: '취소에 실패했습니다', kind: 'error' })
+    } finally {
+      setCancelling(false)
+    }
+  }
+
+  // ── Re-request analysis after cancel ─────────────────────────
+  const handleRequestAnalysis = async () => {
+    if (!id || !analysisJob) return
+    try {
+      const { data: job } = await analysisApi.create({ session_id: id, audio_file_id: analysisJob.audio_file_id })
+      setAnalysisJob(job)
+      setTranscript(null)
+      setSegments([])
+      await fetchSession()
+    } catch (err) {
+      console.error('[request-analysis]', err)
       showToast({ title: '분석 요청에 실패했습니다', kind: 'error' })
-    } finally {
-      setStartingAnalysis(false)
     }
   }
 
-  const handleEditStart = (segId: string, currentText: string) => {
-    setEditingSegId(segId)
-    setEditText(currentText)
-  }
+  // ── Bulk speaker role assignment ─────────────────────────────
+  useEffect(() => {
+    if (segments.length === 0) return
+    setSpeakerRoleMap((prev) => {
+      const next = { ...prev }
+      segments.forEach((seg) => {
+        const label = seg.speaker_label ?? 'UNKNOWN'
+        if (!(label in next)) next[label] = seg.speaker_role
+      })
+      return next
+    })
+  }, [segments])
 
-  const handleEditSave = async (segId: string, originalText: string) => {
-    const resultId = transcript?.result_id
-    if (!resultId || editText === originalText) {
-      setEditingSegId(null)
-      return
-    }
+  const handleBulkApply = async () => {
+    if (!transcript) return
+    setApplyingBulk(true)
     try {
-      await transcriptsApi.updateSegment(resultId, segId, { text: editText })
-      const { data } = await transcriptsApi.getBySession(id!)
-      setTranscript(data)
+      const payload = segments
+        .filter((seg) => {
+          const label = seg.speaker_label ?? 'UNKNOWN'
+          return speakerRoleMap[label] && speakerRoleMap[label] !== seg.speaker_role
+        })
+        .map((seg) => ({
+          segment_id: seg.id,
+          speaker_role: speakerRoleMap[seg.speaker_label ?? 'UNKNOWN'],
+        }))
+      if (payload.length === 0) return
+      const { data } = await transcriptsApi.bulkUpdateSegments(transcript.id, payload)
+      setSegments((prev) => {
+        const updated = new Map(data.map((s) => [s.id, s]))
+        return prev.map((s) => updated.get(s.id) ?? s)
+      })
+      showToast({ title: '화자 역할이 일괄 적용되었습니다', kind: 'success' })
     } catch {
-      showToast({ title: '수정에 실패했습니다', kind: 'error' })
+      showToast({ title: '일괄 적용에 실패했습니다', kind: 'error' })
     } finally {
-      setEditingSegId(null)
+      setApplyingBulk(false)
     }
   }
 
-  const handleSpeakerChange = async (segId: string, role: 'CHILD' | 'THERAPIST' | 'UNKNOWN') => {
-    const resultId = transcript?.result_id
-    if (!resultId) return
-    setSpeakerDropdownId(null)
-    setUpdatingSpeakerId(segId)
+  // ── Transcript segment editing ────────────────────────────────
+  const startEditSeg = (seg: TranscriptSegment) => {
+    setEditingSegId(seg.id)
+    setEditText(seg.text ?? seg.original_text ?? '')
+    setEditRole(seg.speaker_role)
+  }
+
+  const cancelEditSeg = () => setEditingSegId(null)
+
+  const saveEditSeg = async (seg: TranscriptSegment) => {
+    if (!transcript) return
+    setSavingSeg(true)
     try {
-      await transcriptsApi.updateSegment(resultId, segId, { speaker_role: role })
-      const { data } = await transcriptsApi.getBySession(id!)
-      setTranscript(data)
+      const { data } = await transcriptsApi.updateSegment(transcript.id, seg.id, {
+        text: editText, speaker_role: editRole,
+      })
+      setSegments((prev) => prev.map((s) => s.id === data.id ? data : s))
+      setEditingSegId(null)
     } catch {
-      showToast({ title: '화자 변경에 실패했습니다', kind: 'error' })
+      showToast({ title: '저장에 실패했습니다', kind: 'error' })
     } finally {
-      setUpdatingSpeakerId(null)
+      setSavingSeg(false)
     }
   }
 
-  const handleConfirmTranscript = async () => {
-    const resultId = transcript?.result_id
-    if (!resultId || !id) return
+  // ── Transcript finalize ───────────────────────────────────────
+  const handleFinalizeTranscript = async () => {
+    if (!transcript || !id) return
     setConfirming(true)
     try {
-      await transcriptsApi.confirm(resultId)
-      await soapNoteApi.generate({ sessionId: id, transcriptId: resultId })
-      setStepOverride(4)
-      showToast({ title: '전사가 확인되었습니다', kind: 'success' })
+      await transcriptsApi.finalize(transcript.id)
+      showToast({ title: '전사가 확정되었습니다. 리포트를 생성하고 있습니다.', kind: 'success' })
+      setAwaitingReport(true)
     } catch {
-      showToast({ title: '전사 확인 중 오류가 발생했습니다', kind: 'error' })
+      showToast({ title: '전사 확정에 실패했습니다', kind: 'error' })
     } finally {
       setConfirming(false)
     }
   }
 
-  const handleDownload = async () => {
+  // ── Report segment editing ────────────────────────────────────
+  const startEditReportSegment = (seg: ReportSegment) => {
+    setEditingSegmentId(seg.id)
+    setEditSegContent(seg.content ?? seg.ai_content ?? '')
+  }
+
+  const cancelEditReportSegment = () => setEditingSegmentId(null)
+
+  const saveReportSegment = async (seg: ReportSegment) => {
     if (!report) return
-    setDownloading(true)
+    setSavingSegment(true)
     try {
-      const { data } = await reportsApi.download(report.id)
-      const url = URL.createObjectURL(new Blob([data as BlobPart], { type: 'text/plain' }))
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${report.title}.txt`
-      a.click()
-      URL.revokeObjectURL(url)
+      const { data } = await reportsApi.updateSegment(report.id, seg.id, { content: editSegContent })
+      setReportSegments((prev) => prev.map((s) => s.id === data.id ? data : s))
+      setEditingSegmentId(null)
     } catch {
-      showToast({ title: '다운로드에 실패했습니다', kind: 'error' })
+      showToast({ title: '저장에 실패했습니다', kind: 'error' })
     } finally {
-      setDownloading(false)
+      setSavingSegment(false)
     }
   }
 
-  // ── Header info ───────────────────────────────────────────────────────────
-  const headerTitle = child
-    ? `${child.name} — ${fmtDate(session?.session_date ?? '')}`
-    : session
-    ? fmtDate(session.session_date)
-    : '세션 상세'
+  const handleFinalizeReport = async () => {
+    if (!report) return
+    setFinalizingReport(true)
+    try {
+      const { data } = await reportsApi.updateStatus(report.id, 'FINALIZED')
+      setReport(data)
+      showToast({ title: '리포트가 확정되었습니다', kind: 'success' })
+    } catch {
+      showToast({ title: '확정에 실패했습니다', kind: 'error' })
+    } finally {
+      setFinalizingReport(false)
+    }
+  }
 
-  const headerSub = [
-    child ? calcAge(child.birth_date) : null,
-    child?.gender === 'F' ? '여아' : child?.gender === 'M' ? '남아' : null,
-    SESSION_TYPE_LABEL[session?.session_type ?? ''] ?? session?.session_type ?? null,
-  ].filter(Boolean).join(' · ')
+  // ── Back navigation ───────────────────────────────────────────
+  const handleBack = async () => {
+    if (session?.status === 'CREATED' && id) {
+      try {
+        await sessionsApi.delete(id)
+      } catch {
+        // ignore — navigate back regardless
+      }
+    }
+    navigate(-1)
+  }
+
+  // ── Session delete ────────────────────────────────────────────
+  const handleDeleteSession = async () => {
+    if (!id) return
+    setDeleting(true)
+    try {
+      await sessionsApi.delete(id)
+      showToast({ title: '세션이 삭제되었습니다', kind: 'success' })
+      navigate('/sessions')
+    } catch {
+      showToast({ title: '세션 삭제에 실패했습니다', kind: 'error' })
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
+  }
+
+  if (loading) return <div className="px-8 pt-7 text-[13px] text-ink-400">불러오는 중…</div>
+  if (!session) return <div className="px-8 pt-7 text-[13px] text-ink-500">세션을 찾을 수 없습니다.</div>
+
+  const isReportFinalized = report?.status === 'FINALIZED'
 
   return (
     <div>
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="audio/*,.wav,.mp3,.m4a,.ogg"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) handleFileSelect(file)
-          e.target.value = ''
-        }}
-      />
-
       {/* Header */}
       <div className="px-8 pt-7 pb-5 flex items-center gap-4">
         <button
-          onClick={() => navigate(-1)}
+          onClick={handleBack}
           className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-500 hover:bg-ink-100 transition-colors"
         >
           <Icon name="arrowLeft" size={16} />
         </button>
-        <div>
-          <h1 className="text-2xl font-bold text-ink-800 tracking-tight">{headerTitle}</h1>
-          {headerSub && <p className="text-[13px] text-ink-500 mt-0.5">{headerSub}</p>}
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold text-ink-800 tracking-tight">
+            세션 — {patient?.name ?? '—'}
+          </h1>
+          <p className="text-[13px] text-ink-500 mt-0.5">
+            {formatDate(session.session_date)} · {session.session_type ?? '—'}
+          </p>
         </div>
+
+        {/* Delete */}
+        {confirmDelete ? (
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] text-red-600 font-medium">삭제하시겠어요?</span>
+            <button
+              onClick={handleDeleteSession}
+              disabled={deleting}
+              className="px-3 py-1.5 bg-red-600 text-white rounded-full text-[12px] font-semibold hover:bg-red-700 disabled:opacity-60 transition-colors"
+            >
+              {deleting ? '삭제 중…' : '확인'}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="px-3 py-1.5 border border-ink-200 text-ink-600 rounded-full text-[12px] font-semibold hover:bg-ink-50 transition-colors"
+            >
+              취소
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+            title="세션 삭제"
+          >
+            <Icon name="trash" size={15} />
+          </button>
+        )}
       </div>
 
       <div className="px-8 pb-8 flex flex-col gap-5">
@@ -316,10 +491,7 @@ export default function SessionDetailPage() {
               const active = step === s.id
               return (
                 <div key={s.id} className="flex items-center flex-1 last:flex-none">
-                  <div
-                    className="flex flex-col items-center gap-2 cursor-pointer"
-                    onClick={() => { if (done) setStepOverride(s.id as Step) }}
-                  >
+                  <div className="flex flex-col items-center gap-2">
                     <div className={cn(
                       'w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold border-2 transition-all',
                       done   ? 'bg-brand-700 border-brand-700 text-white' :
@@ -342,317 +514,326 @@ export default function SessionDetailPage() {
           </div>
         </div>
 
-        {/* ── Step 1: Upload ───────────────────────────────────────────────── */}
+        {/* Step 1 — Upload */}
         {step === 1 && (
           <div className="bg-white rounded-xl border border-ink-200 shadow-sm">
             <div className="px-6 py-4 border-b border-ink-100">
               <p className="text-[16px] font-semibold text-ink-800">음성 파일 업로드</p>
             </div>
             <div className="p-6">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*,.wav,.mp3,.m4a"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  e.target.value = ''
+                  if (f) handleFileUpload(f)
+                }}
+              />
               <div
                 className={cn(
-                  'border-2 border-dashed border-ink-200 rounded-xl p-10 text-center transition-colors',
-                  uploading ? 'opacity-60 cursor-wait' : 'hover:border-brand-400 cursor-pointer',
+                  'border-2 border-dashed rounded-xl p-10 text-center transition-colors',
+                  uploading ? 'border-brand-400 bg-brand-25 cursor-wait' : 'border-ink-200 hover:border-brand-400 cursor-pointer',
                 )}
                 onClick={() => !uploading && fileInputRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); if (!uploading) { const f = e.dataTransfer.files?.[0]; if (f) handleFileUpload(f) } }}
               >
                 <div className="w-14 h-14 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600 mx-auto mb-3">
                   {uploading
-                    ? <div className="w-6 h-6 rounded-full border-2 border-brand-200 border-t-brand-700" style={{ animation: 'spin 1s linear infinite' }} />
+                    ? <div className="w-6 h-6 rounded-full border-2 border-brand-200 border-t-brand-700" style={{ animation: 'spin 0.8s linear infinite' }} />
                     : <Icon name="upload" size={24} strokeWidth={1.8} />
                   }
                 </div>
-                <p className="font-semibold text-ink-800">
-                  {uploading ? '업로드 중…' : '파일을 드래그하거나 클릭해서 업로드'}
-                </p>
-                <p className="text-[12px] text-ink-500 mt-1">WAV, MP3, M4A · 최대 500MB</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Step 2: Analyze ──────────────────────────────────────────────── */}
-        {step === 2 && (
-          <div className="bg-white rounded-xl border border-ink-200 shadow-sm">
-            <div className="px-6 py-4 border-b border-ink-100">
-              <p className="text-[16px] font-semibold text-ink-800">AI 분석</p>
-            </div>
-            <div className="p-6 text-center">
-              {!analysisJobId || session?.status === 'AUDIO_UPLOADED' ? (
-                <>
-                  <div className="w-14 h-14 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600 mx-auto mb-3">
-                    <Icon name="audio" size={24} strokeWidth={1.8} />
-                  </div>
-                  <p className="font-semibold text-ink-800">음성 분석을 시작할 준비가 됐습니다</p>
-                  <p className="text-[12px] text-ink-500 mt-1">평균 2–3분 소요됩니다</p>
-                  <button
-                    onClick={handleStartAnalysis}
-                    disabled={startingAnalysis}
-                    className="mt-6 px-6 py-2.5 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 transition-colors disabled:opacity-60 disabled:cursor-wait"
-                  >
-                    {startingAnalysis ? '요청 중…' : '분석 시작'}
-                  </button>
-                </>
-              ) : analysisStatus === 'FAILED' ? (
-                <>
-                  <p className="font-semibold text-red-600">분석에 실패했습니다</p>
-                  <p className="text-[12px] text-ink-500 mt-1">오류가 발생했습니다. 다시 시도해주세요.</p>
-                  <button
-                    onClick={handleStartAnalysis}
-                    disabled={startingAnalysis}
-                    className="mt-6 px-6 py-2.5 bg-red-600 text-white rounded-full text-[13px] font-semibold hover:bg-red-700"
-                  >
-                    다시 시도
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div
-                    className="w-16 h-16 rounded-full border-4 border-brand-200 border-t-brand-700 mx-auto mb-4"
-                    style={{ animation: 'spin 1s linear infinite' }}
-                  />
-                  <p className="font-semibold text-ink-800">음성을 분석하고 있습니다</p>
-                  <p className="text-[12px] text-ink-500 mt-1">
-                    상태: {analysisStatus ?? '확인 중…'} · 5초마다 갱신됩니다
-                  </p>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── Step 3: Transcript ───────────────────────────────────────────── */}
-        {step === 3 && (
-          <>
-            <div className="bg-white rounded-xl border border-ink-200 shadow-sm">
-              <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100">
-                <p className="text-[16px] font-semibold text-ink-800">전사 검토</p>
-                <button
-                  onClick={handleConfirmTranscript}
-                  disabled={confirming || transcriptLoading || !transcript}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 transition-colors disabled:opacity-60 disabled:cursor-wait"
-                >
-                  <Icon name="chevronRight" size={14} />
-                  {confirming ? '처리 중…' : '전사 확인 및 리포트 생성'}
-                </button>
-              </div>
-
-              <div className="p-6">
-                {transcriptLoading ? (
-                  <div className="text-center py-8 text-ink-400 text-[13px]">전사를 불러오는 중…</div>
-                ) : !transcript || transcript.segments.length === 0 ? (
-                  <div className="text-center py-8 text-ink-400 text-[13px]">전사 데이터가 없습니다.</div>
+                {uploading ? (
+                  <>
+                    <p className="font-semibold text-ink-800">업로드 중…</p>
+                    <p className="text-[12px] text-ink-500 mt-1">{uploadStep}</p>
+                  </>
                 ) : (
-                  <div className="flex flex-col gap-3">
-                    {transcript.segments.map((seg) => {
-                      const role = (seg.speaker_role ?? 'UNKNOWN') as keyof typeof speakerMap
-                      const sp = speakerMap[role] ?? speakerMap.UNKNOWN
-                      const displayText = seg.final_text ?? seg.edited_text ?? seg.original_text ?? ''
-                      const isEditing = editingSegId === seg.id
-                      const isDropdownOpen = speakerDropdownId === seg.id
-                      const isUpdatingSpeaker = updatingSpeakerId === seg.id
-
-                      return (
-                        <div key={seg.id} className="flex gap-3 items-start">
-                          {/* Timestamp */}
-                          <span className="text-[11px] font-mono text-ink-400 pt-1 w-14 flex-shrink-0">
-                            {seg.start_time != null
-                              ? `${String(Math.floor(seg.start_time / 60)).padStart(2, '0')}:${String(Math.floor(seg.start_time % 60)).padStart(2, '0')}`
-                              : '—'}
-                          </span>
-
-                          {/* Speaker badge — clickable dropdown */}
-                          <div className="relative flex-shrink-0">
-                            <button
-                              disabled={isUpdatingSpeaker}
-                              onClick={() => setSpeakerDropdownId(isDropdownOpen ? null : seg.id)}
-                              className={cn(
-                                'text-[11px] font-semibold px-2 py-0.5 rounded-md transition-opacity flex items-center gap-1',
-                                sp.bg, sp.fg,
-                                isUpdatingSpeaker ? 'opacity-50 cursor-wait' : 'hover:opacity-80 cursor-pointer',
-                              )}
-                            >
-                              {isUpdatingSpeaker ? '…' : sp.label}
-                              {!isUpdatingSpeaker && (
-                                <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor">
-                                  <path d="M5 7L1 3h8z" />
-                                </svg>
-                              )}
-                            </button>
-
-                            {isDropdownOpen && (
-                              <>
-                                {/* Backdrop */}
-                                <div
-                                  className="fixed inset-0 z-10"
-                                  onClick={() => setSpeakerDropdownId(null)}
-                                />
-                                <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-ink-200 rounded-lg shadow-lg py-1 min-w-[96px]">
-                                  {(
-                                    [
-                                      { value: 'CHILD',     label: '아동',   bg: 'bg-brand-100', fg: 'text-brand-700' },
-                                      { value: 'THERAPIST', label: '치료사', bg: 'bg-blue-100',  fg: 'text-blue-700' },
-                                      { value: 'UNKNOWN',   label: '미상',   bg: 'bg-ink-100',   fg: 'text-ink-600' },
-                                    ] as const
-                                  ).map((opt) => (
-                                    <button
-                                      key={opt.value}
-                                      onClick={() => handleSpeakerChange(seg.id, opt.value)}
-                                      className={cn(
-                                        'w-full text-left px-3 py-1.5 text-[12px] font-semibold flex items-center gap-2 hover:bg-ink-50 transition-colors',
-                                        role === opt.value ? 'opacity-40 cursor-default' : '',
-                                      )}
-                                    >
-                                      <span className={cn('w-2 h-2 rounded-full', opt.bg)} />
-                                      <span className={opt.fg}>{opt.label}</span>
-                                      {role === opt.value && (
-                                        <Icon name="check" size={11} strokeWidth={2.5} className="ml-auto text-ink-400" />
-                                      )}
-                                    </button>
-                                  ))}
-                                </div>
-                              </>
-                            )}
-                          </div>
-
-                          {/* Text */}
-                          <div className="flex-1">
-                            {isEditing ? (
-                              <div className="flex gap-2 items-center">
-                                <input
-                                  autoFocus
-                                  value={editText}
-                                  onChange={(e) => setEditText(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleEditSave(seg.id, displayText)
-                                    if (e.key === 'Escape') setEditingSegId(null)
-                                  }}
-                                  onBlur={() => handleEditSave(seg.id, displayText)}
-                                  className="flex-1 text-[13px] border border-brand-400 rounded-md px-2 py-0.5 outline-none font-sans"
-                                />
-                                <span className="text-[10px] text-ink-400">Enter 저장 · Esc 취소</span>
-                              </div>
-                            ) : (
-                              <p
-                                className={cn(
-                                  'text-[13px] leading-relaxed cursor-text hover:bg-brand-25 rounded px-1 -ml-1',
-                                  seg.edited_text ? 'text-brand-700' : 'text-ink-700',
-                                )}
-                                onClick={() => handleEditStart(seg.id, displayText)}
-                                title="클릭하여 편집"
-                              >
-                                {displayText}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Edit indicator */}
-                          {seg.edited_text && !isEditing && (
-                            <span className="text-[10px] text-brand-500 font-semibold mt-1 flex-shrink-0">수정됨</span>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
+                  <>
+                    <p className="font-semibold text-ink-800">파일을 드래그하거나 클릭해서 업로드</p>
+                    <p className="text-[12px] text-ink-500 mt-1">WAV, MP3, M4A · 최대 500MB</p>
+                  </>
                 )}
               </div>
             </div>
-          </>
+          </div>
         )}
 
-        {/* ── Step 4: Metrics ──────────────────────────────────────────────── */}
-        {step === 4 && (() => {
-          const speakers: any[] = (analysisResult?.metrics_json as any)?.speakers ?? []
-          const child = speakers.find((s: any) => s.speaker_role === 'CHILD')
-          const m = child?.metrics
-          if (!m) return null
-
-          const cards = [
-            {
-              label: 'MLU',
-              sublabel: '평균 발화 길이 (형태소)',
-              value: m.mlu_morpheme != null ? m.mlu_morpheme.toFixed(2) : '—',
-              unit: '형태소/발화',
-            },
-            {
-              label: 'NTW',
-              sublabel: '총 발화 단어 수',
-              value: m.ntw != null ? String(m.ntw) : '—',
-              unit: '단어',
-            },
-            {
-              label: 'TTR',
-              sublabel: '어휘 다양도',
-              value: m.ttr != null ? (m.ttr * 100).toFixed(1) + '%' : '—',
-              unit: 'NDW / NTW',
-            },
-            {
-              label: '반응 지연',
-              sublabel: '치료사 발화 후 아동 응답',
-              value: m.average_response_latency_sec != null
-                ? m.average_response_latency_sec.toFixed(2)
-                : '—',
-              unit: '초',
-            },
-          ]
-
-          return (
-            <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-5">
-              <p className="text-[14px] font-semibold text-ink-800 mb-4">아동 언어 지표</p>
-              <div className="grid grid-cols-4 gap-3">
-                {cards.map((c) => (
-                  <div key={c.label} className="bg-brand-50 rounded-xl p-4">
-                    <p className="text-[11px] font-bold text-brand-700 uppercase tracking-wide">{c.label}</p>
-                    <p className="text-[22px] font-bold text-ink-800 font-mono-num mt-1">{c.value}</p>
-                    <p className="text-[11px] text-ink-500 mt-0.5">{c.unit}</p>
-                    <p className="text-[10px] text-ink-400 mt-1">{c.sublabel}</p>
+        {/* Step 2 — Analysis */}
+        {step === 2 && (
+          <div className="bg-white rounded-xl border border-ink-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-ink-100">
+              <p className="text-[16px] font-semibold text-ink-800">
+                {session.status === 'FAILED' ? 'AI 분석 실패' : 'AI 분석 중'}
+              </p>
+            </div>
+            <div className="p-6 text-center">
+              {session.status === 'FAILED' ? (
+                <>
+                  <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-red-500 mx-auto mb-4">
+                    <Icon name="alert" size={28} strokeWidth={1.8} />
                   </div>
-                ))}
-              </div>
-              {m.warnings?.length > 0 && (
-                <p className="text-[11px] text-amber-600 mt-3">
-                  ⚠ {m.warnings.join(' · ')}
-                </p>
+                  <p className="font-semibold text-ink-800">분석 중 오류가 발생했습니다</p>
+                  <p className="text-[12px] text-ink-500 mt-1">{analysisJob?.error_message ?? '알 수 없는 오류'}</p>
+                </>
+              ) : session.status === 'AUDIO_UPLOADED' ? (
+                <>
+                  <div className="w-16 h-16 rounded-full bg-ink-50 flex items-center justify-center text-ink-400 mx-auto mb-4">
+                    <Icon name="x" size={28} strokeWidth={1.8} />
+                  </div>
+                  <p className="font-semibold text-ink-800">분석이 취소되었습니다</p>
+                  <p className="text-[12px] text-ink-500 mt-1">분석을 다시 요청할 수 있습니다.</p>
+                  {analysisJob && (
+                    <button
+                      onClick={handleRequestAnalysis}
+                      className="mt-4 px-4 py-1.5 bg-brand-600 text-white rounded-full text-[12px] font-semibold hover:bg-brand-700 transition-colors"
+                    >
+                      다시 분석 요청
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 rounded-full border-4 border-brand-200 border-t-brand-700 mx-auto mb-4"
+                    style={{ animation: 'spin 1s linear infinite' }} />
+                  <p className="font-semibold text-ink-800">음성을 분석하고 있습니다</p>
+                  <p className="text-[12px] text-ink-500 mt-1">
+                    {analysisJob?.pipeline_stage ? `현재 단계: ${analysisJob.pipeline_stage}` : '평균 2–3분 소요됩니다'}
+                  </p>
+                  <p className="text-[11px] text-ink-400 mt-4">페이지를 벗어나도 분석은 계속됩니다.</p>
+                  {analysisJob && ['PENDING', 'DOWNLOADING', 'RETRYING'].includes(analysisJob.status) && (
+                    <button
+                      onClick={handleCancelAnalysis}
+                      disabled={cancelling}
+                      className="mt-4 px-4 py-1.5 border border-ink-200 text-ink-500 rounded-full text-[12px] font-semibold hover:bg-ink-50 disabled:opacity-60 transition-colors"
+                    >
+                      {cancelling ? '취소 중…' : '분석 취소'}
+                    </button>
+                  )}
+                </>
               )}
             </div>
-          )
-        })()}
+          </div>
+        )}
 
-        {/* ── Step 4: SOAP Note ────────────────────────────────────────────── */}
+        {/* Step 3 — Transcript review */}
+        {step === 3 && transcript && (
+          <div className="bg-white rounded-xl border border-ink-200 shadow-sm">
+            {awaitingReport ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-4">
+                <div className="w-8 h-8 rounded-full border-2 border-brand-200 border-t-brand-600 animate-spin" />
+                <p className="text-[14px] font-semibold text-ink-700">리포트를 생성하고 있습니다</p>
+                <p className="text-[12px] text-ink-400">페이지를 벗어나도 계속됩니다.</p>
+              </div>
+            ) : (<>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100">
+              <div>
+                <p className="text-[16px] font-semibold text-ink-800">전사 검토</p>
+                <p className="text-[12px] text-ink-500 mt-0.5">텍스트나 화자를 수정한 뒤 확정하세요</p>
+              </div>
+              <button
+                onClick={handleFinalizeTranscript}
+                disabled={confirming || !!editingSegId}
+                className="flex items-center gap-1.5 px-4 py-2 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 transition-colors disabled:opacity-60"
+              >
+                <Icon name="chevronRight" size={14} />
+                {confirming ? '처리 중…' : '전사 확정'}
+              </button>
+            </div>
+            {Object.keys(speakerRoleMap).length > 0 && (
+              <div className="px-6 py-3 border-b border-ink-100 bg-ink-25 flex flex-wrap items-center gap-3">
+                <span className="text-[12px] font-semibold text-ink-600 flex-shrink-0">화자 일괄 지정</span>
+                {Object.entries(speakerRoleMap).map(([label, role]) => (
+                  <div key={label} className="flex items-center gap-1.5">
+                    <span className="text-[12px] font-mono text-ink-500">{label}</span>
+                    <span className="text-[11px] text-ink-300">→</span>
+                    <select
+                      value={role}
+                      onChange={(e) => setSpeakerRoleMap((prev) => ({ ...prev, [label]: e.target.value as SpeakerRole }))}
+                      className="text-[11px] border border-ink-200 rounded-md px-1.5 py-0.5 bg-white outline-none focus:border-brand-500"
+                    >
+                      <option value="PATIENT">환자</option>
+                      <option value="SLP">치료사</option>
+                      <option value="GUARDIAN">보호자</option>
+                      <option value="UNKNOWN">미상</option>
+                    </select>
+                  </div>
+                ))}
+                <button
+                  onClick={handleBulkApply}
+                  disabled={applyingBulk}
+                  className="ml-auto px-3 py-1 bg-brand-700 text-white rounded-full text-[12px] font-semibold hover:bg-brand-900 disabled:opacity-60 transition-colors"
+                >
+                  {applyingBulk ? '적용 중…' : '일괄 적용'}
+                </button>
+              </div>
+            )}
+            <div className="divide-y divide-ink-50">
+              {segments.length === 0 ? (
+                <p className="text-[13px] text-ink-400 text-center py-8">전사 결과가 없습니다.</p>
+              ) : (
+                segments.map((seg) => {
+                  const isEditing = editingSegId === seg.id
+                  const s = speakerMap[seg.speaker_role]
+                  const text = seg.text ?? seg.original_text ?? ''
+
+                  return (
+                    <div key={seg.id} className={cn('flex gap-3 items-start px-6 py-3', isEditing ? 'bg-brand-25' : 'hover:bg-ink-50 group')}>
+                      <span className="text-[11px] font-mono text-ink-400 pt-1 w-14 flex-shrink-0">
+                        {formatMs(seg.start_ms)}
+                      </span>
+
+                      {isEditing ? (
+                        <select
+                          value={editRole}
+                          onChange={(e) => setEditRole(e.target.value as SpeakerRole)}
+                          className="text-[11px] font-semibold border border-ink-200 rounded-md px-1.5 py-0.5 bg-white outline-none focus:border-brand-500 flex-shrink-0 h-fit mt-0.5"
+                        >
+                          <option value="PATIENT">환자</option>
+                          <option value="SLP">치료사</option>
+                          <option value="GUARDIAN">보호자</option>
+                          <option value="UNKNOWN">미상</option>
+                        </select>
+                      ) : (
+                        <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-md flex-shrink-0 mt-0.5', s.bg, s.fg)}>
+                          {s.label}
+                        </span>
+                      )}
+
+                      {isEditing ? (
+                        <div className="flex-1 flex flex-col gap-2">
+                          <textarea
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            rows={3}
+                            autoFocus
+                            className="w-full px-3 py-2 rounded-lg text-[13px] border border-brand-400 bg-white outline-none focus:ring-2 focus:ring-brand-500/16 resize-none font-sans leading-relaxed"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveEditSeg(seg)}
+                              disabled={savingSeg}
+                              className="px-3 py-1 bg-brand-700 text-white rounded-full text-[12px] font-semibold hover:bg-brand-900 disabled:opacity-60 transition-colors"
+                            >
+                              {savingSeg ? '저장 중…' : '저장'}
+                            </button>
+                            <button
+                              onClick={cancelEditSeg}
+                              className="px-3 py-1 border border-ink-200 text-ink-600 rounded-full text-[12px] font-semibold hover:bg-ink-50 transition-colors"
+                            >
+                              취소
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className={cn('text-[13px] leading-relaxed flex-1', seg.is_edited ? 'text-brand-700' : 'text-ink-700')}>
+                            {text}
+                            {seg.is_edited && <span className="ml-1.5 text-[10px] text-brand-500 font-semibold">수정됨</span>}
+                          </p>
+                          <button
+                            onClick={() => startEditSeg(seg)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 flex items-center justify-center rounded-md text-ink-400 hover:bg-ink-100 flex-shrink-0 mt-0.5"
+                          >
+                            <Icon name="edit" size={13} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+            </>)}
+          </div>
+        )}
+
+        {/* Step 4 — Report */}
         {step === 4 && (
           <div className="bg-white rounded-xl border border-ink-200 shadow-sm">
             <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100">
-              <p className="text-[16px] font-semibold text-ink-800">SOAP Note</p>
-              <button
-                onClick={handleDownload}
-                disabled={!report || downloading}
-                className="flex items-center gap-1.5 px-4 py-2 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 transition-colors disabled:opacity-50 disabled:cursor-wait"
-              >
-                <Icon name="download" size={14} />
-                {downloading ? '다운로드 중…' : report ? '리포트 다운로드' : '리포트 없음'}
-              </button>
-            </div>
-            <div className="p-6">
-              {soapLoading ? (
-                <div className="text-center py-8 text-ink-400 text-[13px]">불러오는 중…</div>
-              ) : soapNote ? (
-                <div className="grid grid-cols-2 gap-4">
-                  {([
-                    { key: 'S', label: 'Subjective — 주관적 정보', value: soapNote.subjective },
-                    { key: 'O', label: 'Objective — 객관적 정보',  value: soapNote.objective  },
-                    { key: 'A', label: 'Assessment — 평가',        value: soapNote.assessment  },
-                    { key: 'P', label: 'Plan — 계획',              value: soapNote.plan        },
-                  ] as const).map(({ key, label, value }) => (
-                    <div key={key} className="bg-ink-50 rounded-xl p-4">
-                      <p className="text-[11px] font-bold text-brand-700 uppercase tracking-wide mb-1.5">{label}</p>
-                      <p className="text-[13px] text-ink-700 leading-relaxed">{value ?? '—'}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-ink-400 text-[13px]">SOAP 노트가 없습니다.</div>
+              <div>
+                <p className="text-[16px] font-semibold text-ink-800">리포트</p>
+                {isReportFinalized && (
+                  <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-md">
+                    <Icon name="check" size={11} strokeWidth={3} />확정됨
+                  </span>
+                )}
+              </div>
+              {!isReportFinalized && report && (
+                <button
+                  onClick={handleFinalizeReport}
+                  disabled={finalizingReport}
+                  className="px-4 py-2 bg-brand-700 text-white rounded-full text-[13px] font-semibold hover:bg-brand-900 disabled:opacity-60 transition-colors"
+                >
+                  {finalizingReport ? '처리 중…' : '리포트 확정'}
+                </button>
               )}
             </div>
+            {report ? (
+              <div className="p-6 grid grid-cols-2 gap-4">
+                {reportSegments.map((seg) => {
+                  const isEditing = editingSegmentId === seg.id
+                  const displayContent = seg.content ?? seg.ai_content ?? ''
+                  return (
+                    <div key={seg.id} className="bg-ink-50 rounded-xl p-4">
+                      <p className="text-[11px] font-bold text-brand-700 uppercase tracking-wide mb-2">
+                        {SEGMENT_TYPE_LABELS[seg.segment_type] ?? seg.segment_type}
+                      </p>
+                      {isReportFinalized ? (
+                        <p className="text-[13px] text-ink-700 leading-relaxed whitespace-pre-wrap">
+                          {displayContent || '—'}
+                        </p>
+                      ) : isEditing ? (
+                        <div className="flex flex-col gap-2">
+                          <textarea
+                            value={editSegContent}
+                            onChange={(e) => setEditSegContent(e.target.value)}
+                            rows={5}
+                            autoFocus
+                            className="w-full bg-white rounded-lg px-3 py-2 text-[13px] text-ink-700 leading-relaxed border border-brand-400 outline-none focus:ring-2 focus:ring-brand-500/16 resize-none font-sans"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveReportSegment(seg)}
+                              disabled={savingSegment}
+                              className="px-3 py-1 bg-brand-700 text-white rounded-full text-[12px] font-semibold hover:bg-brand-900 disabled:opacity-60 transition-colors"
+                            >
+                              {savingSegment ? '저장 중…' : '저장'}
+                            </button>
+                            <button
+                              onClick={cancelEditReportSegment}
+                              className="px-3 py-1 border border-ink-200 text-ink-600 rounded-full text-[12px] font-semibold hover:bg-ink-50 transition-colors"
+                            >
+                              취소
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="group relative">
+                          <textarea
+                            value={displayContent}
+                            readOnly
+                            rows={5}
+                            onClick={() => startEditReportSegment(seg)}
+                            className="w-full bg-white rounded-lg px-3 py-2 text-[13px] text-ink-700 leading-relaxed border border-ink-200 outline-none resize-none font-sans cursor-pointer hover:border-brand-400 transition-colors"
+                          />
+                          {seg.is_edited && (
+                            <span className="absolute top-2 right-2 text-[10px] text-brand-500 font-semibold">수정됨</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="py-12 text-center text-[13px] text-ink-400">리포트를 불러오는 중…</div>
+            )}
           </div>
         )}
       </div>

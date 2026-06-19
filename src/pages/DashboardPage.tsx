@@ -1,19 +1,14 @@
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { sessionsApi, type Session } from '@/api/sessions'
+import { patientsApi, type Patient } from '@/api/patients'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Icon } from '@/components/common/Icon'
 import { useAuthStore } from '@/store/authStore'
-import { cn } from '@/lib/utils'
-import { sessionsApi } from '@/api/sessions'
-import { childrenApi } from '@/api/children'
+import { cn, formatDate } from '@/lib/utils'
+import { useToast } from '@/hooks/useToast'
 
-function fmtDate(d: string) {
-  return d.slice(0, 10).replaceAll('-', '.')
-}
-
-const SESSION_TYPE_LABEL: Record<string, string> = { INDIVIDUAL: '개별', GROUP: '그룹' }
-
-function StatCard({ label, value, delta, tone }: { label: string; value: number; delta: string; tone: string }) {
+function StatCard({ label, value, delta, tone }: { label: string; value: number; delta: string; tone: 'pos' | 'neutral' }) {
   return (
     <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-5 flex flex-col gap-2">
       <p className="text-[12px] font-semibold text-ink-500 uppercase tracking-wide">{label}</p>
@@ -25,30 +20,43 @@ function StatCard({ label, value, delta, tone }: { label: string; value: number;
 
 export default function DashboardPage() {
   const navigate = useNavigate()
+  const { showToast } = useToast()
   const user = useAuthStore((s) => s.user)
 
-  const { data: sessions = [] } = useQuery({
-    queryKey: ['sessions'],
-    queryFn: () => sessionsApi.list().then((r) => r.data),
-  })
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [patients, setPatients] = useState<Patient[]>([])
+  const [patientMap, setPatientMap] = useState<Record<string, Patient>>({})
+  const [loading, setLoading] = useState(true)
 
-  const { data: children = [] } = useQuery({
-    queryKey: ['children'],
-    queryFn: () => childrenApi.list().then((r) => r.data),
-  })
+  useEffect(() => {
+    Promise.all([sessionsApi.list(), patientsApi.list()])
+      .then(([sessRes, patientRes]) => {
+        const sess = Array.isArray(sessRes.data) ? sessRes.data : []
+        const pats = Array.isArray(patientRes.data) ? patientRes.data : []
+        setSessions(sess)
+        setPatients(pats)
+        const map: Record<string, Patient> = {}
+        pats.forEach((p) => { map[p.id] = p })
+        setPatientMap(map)
+      })
+      .catch(() => showToast({ title: '데이터를 불러오지 못했습니다', kind: 'error' }))
+      .finally(() => setLoading(false))
+  }, [])
 
-  const childMap = Object.fromEntries(children.map((c) => [c.id, c]))
-  const thisMonth = new Date().toISOString().slice(0, 7)
-  const sessionsThisMonth = sessions.filter((s) => s.created_at.startsWith(thisMonth)).length
-  const analysisQueue = sessions.filter((s) =>
-    s.status === 'ANALYSIS_REQUESTED' || s.status === 'ANALYSIS_PROCESSING',
-  ).length
-  const recentSessions = sessions.slice(0, 5)
+  const now = new Date()
+  const thisMonthSessions = sessions.filter((s) => {
+    const d = new Date(s.created_at)
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+  })
+  const processingCount = sessions.filter((s) => s.status === 'ANALYSIS_PROCESSING').length
+  const recentSessions = [...sessions]
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .slice(0, 5)
 
   const stats = [
-    { id: 'children', label: '담당 아동',    value: children.length,    delta: `총 ${children.length}명`,         tone: 'pos' },
-    { id: 'sessions', label: '이번 달 세션', value: sessionsThisMonth,  delta: `전체 ${sessions.length}개 세션`,  tone: 'pos' },
-    { id: 'queue',    label: '분석 진행 중', value: analysisQueue,       delta: '분석 대기 세션',                  tone: 'neutral' },
+    { id: 'patients', label: '담당 환자',    value: patients.length,          delta: `전체 ${patients.length}명`,          tone: 'pos' as const },
+    { id: 'sessions', label: '이번 달 세션',  value: thisMonthSessions.length, delta: `이번 달 ${thisMonthSessions.length}회`, tone: 'pos' as const },
+    { id: 'queue',    label: '분석 진행 중',  value: processingCount,          delta: '현재 진행 중',                         tone: 'neutral' as const },
   ]
 
   return (
@@ -69,10 +77,12 @@ export default function DashboardPage() {
       </div>
 
       <div className="px-8 pb-8 flex flex-col gap-6">
+        {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
           {stats.map((s) => <StatCard key={s.id} {...s} />)}
         </div>
 
+        {/* Recent sessions */}
         <div className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100">
             <div>
@@ -87,20 +97,23 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          {recentSessions.length === 0 ? (
-            <div className="py-12 text-center text-ink-400 text-[13px]">세션이 없습니다.</div>
+          {loading ? (
+            <div className="py-10 text-center text-[13px] text-ink-400">불러오는 중…</div>
+          ) : recentSessions.length === 0 ? (
+            <div className="py-10 text-center text-[13px] text-ink-400">세션이 없습니다.</div>
           ) : (
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="bg-ink-50 border-b border-ink-100">
-                  {['아동', '날짜', '유형', '상태'].map((h) => (
-                    <th key={h} className="py-2.5 px-5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider text-left">{h}</th>
-                  ))}
+                  <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider">환자</th>
+                  <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider">날짜</th>
+                  <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider">유형</th>
+                  <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider">상태</th>
                 </tr>
               </thead>
               <tbody>
                 {recentSessions.map((s) => {
-                  const child = childMap[s.child_id]
+                  const patient = patientMap[s.patient_ref_id]
                   return (
                     <tr
                       key={s.id}
@@ -110,15 +123,15 @@ export default function DashboardPage() {
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[13px] font-bold">
-                            {child ? child.name[0] : '?'}
+                            {patient ? patient.name[0] : '?'}
                           </div>
-                          <p className="font-semibold text-ink-800">{child?.name ?? '—'}</p>
+                          <p className="font-semibold text-ink-800">{patient?.name ?? '—'}</p>
                         </div>
                       </td>
-                      <td className="px-5 py-3 font-mono-num text-ink-500">{fmtDate(s.session_date)}</td>
+                      <td className="px-5 py-3 font-mono-num text-ink-500">{formatDate(s.session_date)}</td>
                       <td className="px-5 py-3">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-ink-100 text-ink-600">
-                          {SESSION_TYPE_LABEL[s.session_type ?? ''] ?? s.session_type ?? '—'}
+                          {s.session_type ?? '—'}
                         </span>
                       </td>
                       <td className="px-5 py-3"><StatusBadge status={s.status} /></td>

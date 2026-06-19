@@ -7,7 +7,6 @@ export const apiClient = axios.create({
   timeout: 15_000,
 })
 
-// Request interceptor — attach Bearer token
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = useAuthStore.getState().accessToken
   if (token) {
@@ -30,7 +29,6 @@ const processQueue = (error: AxiosError | null, token: string | null = null) => 
   failedQueue = []
 }
 
-// Response interceptor — 401 → refresh → retry
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {

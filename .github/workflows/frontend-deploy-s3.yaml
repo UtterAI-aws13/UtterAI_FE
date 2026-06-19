@@ -3,9 +3,7 @@ name: Frontend Deploy S3
 on:
   push:
     branches:
-      - dev
-      # - main (main merge 이전까지 임시로 막음)
-      
+      - main
     paths:
       - "src/**"
       - "public/**"
@@ -44,11 +42,8 @@ jobs:
           if [ "${GITHUB_REF_NAME}" = "main" ]; then
             TARGET_ENV="prod"
             RELEASE_ID="prod-${SHORT_SHA}"
-          elif [ "${GITHUB_REF_NAME}" = "dev" ]; then
-            TARGET_ENV="dev"
-            RELEASE_ID="dev-${SHORT_SHA}"
           else
-            echo "Frontend 배포는 dev 또는 main 브랜치에서만 실행합니다."
+            echo "Frontend prod 배포는 main 브랜치에서만 실행합니다."
             exit 1
           fi
 

@@ -1,38 +1,55 @@
 import { apiClient } from './client'
-import type { TranscriptSegment, SpeakerRole } from './analysisResult'
+
+export type SpeakerRole = 'PATIENT' | 'SLP' | 'GUARDIAN' | 'UNKNOWN'
+export type TranscriptStatus = 'DRAFT' | 'EDITING' | 'REVIEWED' | 'FINALIZED'
 
 export interface Transcript {
+  id: string
   session_id: string
-  result_id: string | null
-  segments: TranscriptSegment[]
+  audio_file_id: string
+  job_id: string
+  status: TranscriptStatus
+  raw_draft_s3_key: string | null
+  final_s3_key: string | null
+  finalized_by: string | null
+  finalized_at: string | null
+  created_at: string
+  updated_at: string
 }
 
-export interface TranscriptConfirmResponse {
+export interface TranscriptSegment {
+  id: string
+  transcript_id: string
   session_id: string
-  confirmed_segments: number
-  message: string
+  segment_index: number
+  speaker_label: string | null
+  speaker_role: SpeakerRole
+  start_ms: number | null
+  end_ms: number | null
+  original_text: string | null
+  text: string | null
+  confidence: number | null
+  is_edited: boolean
+  edited_by: string | null
+  edited_at: string | null
+  created_at: string
 }
 
 export interface UpdateSegmentPayload {
   text?: string | null
   speaker_role?: SpeakerRole | null
-  edit_reason?: string | null
-}
-
-export interface CreateSegmentPayload {
-  speaker_label?: string | null
-  speaker_role?: SpeakerRole | null
-  start_time?: number | null
-  end_time?: number | null
-  text?: string | null
-  edit_reason?: string | null
 }
 
 export interface BulkUpdateSegmentItem {
   segment_id: string
   text?: string | null
   speaker_role?: SpeakerRole | null
-  edit_reason?: string | null
+}
+
+export interface TranscriptFinalizeResponse {
+  transcript_id: string
+  status: TranscriptStatus
+  message: string
 }
 
 export const transcriptsApi = {
@@ -40,27 +57,23 @@ export const transcriptsApi = {
   getBySession: (sessionId: string) =>
     apiClient.get<Transcript>(`/sessions/${sessionId}/transcript`),
 
-  // GET /transcripts/{result_id}
-  getByResult: (resultId: string) =>
-    apiClient.get<Transcript>(`/transcripts/${resultId}`),
+  // GET /transcripts/{transcript_id}
+  getById: (transcriptId: string) =>
+    apiClient.get<Transcript>(`/transcripts/${transcriptId}`),
 
-  // PATCH /transcripts/{result_id}/confirm
-  confirm: (resultId: string) =>
-    apiClient.patch<TranscriptConfirmResponse>(`/transcripts/${resultId}/confirm`),
+  // GET /transcripts/{transcript_id}/segments
+  listSegments: (transcriptId: string) =>
+    apiClient.get<TranscriptSegment[]>(`/transcripts/${transcriptId}/segments`),
 
-  // POST /transcripts/{result_id}/segments
-  addSegment: (resultId: string, payload: CreateSegmentPayload) =>
-    apiClient.post<TranscriptSegment>(`/transcripts/${resultId}/segments`, payload),
+  // POST /transcripts/{transcript_id}/finalize
+  finalize: (transcriptId: string) =>
+    apiClient.post<TranscriptFinalizeResponse>(`/transcripts/${transcriptId}/finalize`),
 
-  // PATCH /transcripts/{result_id}/segments/{segment_id}
-  updateSegment: (resultId: string, segmentId: string, payload: UpdateSegmentPayload) =>
-    apiClient.patch<TranscriptSegment>(`/transcripts/${resultId}/segments/${segmentId}`, payload),
+  // PATCH /transcripts/{transcript_id}/segments/{segment_id}
+  updateSegment: (transcriptId: string, segmentId: string, payload: UpdateSegmentPayload) =>
+    apiClient.patch<TranscriptSegment>(`/transcripts/${transcriptId}/segments/${segmentId}`, payload),
 
-  // PATCH /transcripts/{result_id}/segments (bulk)
-  bulkUpdateSegments: (resultId: string, segments: BulkUpdateSegmentItem[]) =>
-    apiClient.patch<Transcript>(`/transcripts/${resultId}/segments`, { segments }),
-
-  // DELETE /transcripts/{result_id}/segments/{segment_id}
-  deleteSegment: (resultId: string, segmentId: string) =>
-    apiClient.delete<Transcript>(`/transcripts/${resultId}/segments/${segmentId}`),
+  // PATCH /transcripts/{transcript_id}/segments (bulk)
+  bulkUpdateSegments: (transcriptId: string, segments: BulkUpdateSegmentItem[]) =>
+    apiClient.patch<TranscriptSegment[]>(`/transcripts/${transcriptId}/segments`, { segments }),
 }

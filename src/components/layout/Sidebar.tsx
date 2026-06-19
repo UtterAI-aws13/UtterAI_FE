@@ -6,8 +6,8 @@ import { useLogout } from '@/hooks/useAuth'
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: '대시보드',  icon: 'grid'     as const },
-  { to: '/children',  label: '아동 관리', icon: 'users'    as const },
-  { to: '/sessions',  label: '세션 관리', icon: 'audio'    as const, badge: 3 },
+  { to: '/patients',  label: '환자 관리', icon: 'users'    as const },
+  { to: '/sessions',  label: '세션 관리', icon: 'audio'    as const },
   { to: '/reports',   label: '리포트',   icon: 'report'   as const },
   { to: '/templates', label: '템플릿 관리', icon: 'fileText' as const },
 ]
@@ -56,11 +56,6 @@ export function Sidebar() {
         >
           <Icon name={item.icon} size={16} />
           {item.label}
-          {item.badge && (
-            <span className="ml-auto text-[10px] font-bold bg-brand-100 text-brand-700 px-1.5 py-px rounded-full">
-              {item.badge}
-            </span>
-          )}
         </NavLink>
       ))}
 

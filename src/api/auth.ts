@@ -1,5 +1,4 @@
 import { apiClient } from './client'
-import type { User } from '@/store/authStore'
 
 export interface LoginPayload {
   email: string
@@ -10,7 +9,17 @@ export interface SignupPayload {
   name: string
   email: string
   password: string
-  role: 'THERAPIST' | 'ADMIN'
+  role: 'SLP' | 'ADMIN'
+}
+
+export interface User {
+  id: string
+  email: string
+  name: string
+  role: string
+  status: string
+  created_at: string
+  updated_at: string
 }
 
 export interface TokenResponse {
@@ -21,18 +30,9 @@ export interface TokenResponse {
 }
 
 export const authApi = {
-  login: (payload: LoginPayload) =>
-    apiClient.post<TokenResponse>('/auth/login', payload),
-
-  signup: (payload: SignupPayload) =>
-    apiClient.post<TokenResponse>('/auth/signup', payload),
-
-  refreshToken: (refresh_token: string) =>
-    apiClient.post<TokenResponse>('/auth/refresh', { refresh_token }),
-
-  me: () =>
-    apiClient.get<User>('/auth/me'),
-
-  logout: () =>
-    apiClient.post('/auth/logout'),
+  login:   (payload: LoginPayload)  => apiClient.post<TokenResponse>('/auth/login', payload),
+  signup:  (payload: SignupPayload) => apiClient.post<TokenResponse>('/auth/signup', payload),
+  refresh: (refresh_token: string)  => apiClient.post<TokenResponse>('/auth/refresh', { refresh_token }),
+  me:      ()                       => apiClient.get<User>('/auth/me'),
+  logout:  ()                       => apiClient.post<{ revoked_sessions: number; message: string }>('/auth/logout'),
 }

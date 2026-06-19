@@ -1,6 +1,5 @@
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
-import { ToastContainer } from '@/components/common/ToastContainer'
 import { Icon } from '@/components/common/Icon'
 
 export function AppShell() {
@@ -30,7 +29,6 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
-      <ToastContainer />
     </div>
   )
 }
