@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { sessionsApi, type Session } from '@/api/sessions'
+import { sessionsApi, type Session, type SessionStatus } from '@/api/sessions'
 import { patientsApi, type Patient } from '@/api/patients'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Icon } from '@/components/common/Icon'
@@ -48,7 +48,8 @@ export default function DashboardPage() {
     const d = new Date(s.created_at)
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
   })
-  const processingCount = sessions.filter((s) => s.status === 'ANALYSIS_PROCESSING').length
+  const IN_PROGRESS_STATUSES: SessionStatus[] = ['ANALYSIS_REQUESTED', 'ANALYSIS_PROCESSING', 'REPORT_GENERATING']
+  const processingCount = sessions.filter((s) => IN_PROGRESS_STATUSES.includes(s.status)).length
   const recentSessions = [...sessions]
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .slice(0, 5)
