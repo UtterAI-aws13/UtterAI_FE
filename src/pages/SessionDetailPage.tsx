@@ -67,6 +67,7 @@ export default function SessionDetailPage() {
   const [editText, setEditText]         = useState('')
   const [editRole, setEditRole]         = useState<SpeakerRole>('UNKNOWN')
   const [savingSeg, setSavingSeg]       = useState(false)
+  const [deletingSegId, setDeletingSegId]   = useState<string | null>(null)
   const [speakerRoleMap, setSpeakerRoleMap] = useState<Record<string, SpeakerRole>>({})
   const [applyingBulk, setApplyingBulk]    = useState(false)
 
@@ -334,6 +335,19 @@ export default function SessionDetailPage() {
   }
 
   const cancelEditSeg = () => setEditingSegId(null)
+
+  const deleteSegment = async (seg: TranscriptSegment) => {
+    if (!transcript) return
+    setDeletingSegId(seg.id)
+    try {
+      await transcriptsApi.deleteSegment(transcript.id, seg.id)
+      setSegments((prev) => prev.filter((s) => s.id !== seg.id))
+    } catch {
+      showToast({ title: '삭제에 실패했습니다', kind: 'error' })
+    } finally {
+      setDeletingSegId(null)
+    }
+  }
 
   const saveEditSeg = async (seg: TranscriptSegment) => {
     if (!transcript) return
@@ -727,6 +741,13 @@ export default function SessionDetailPage() {
                             >
                               취소
                             </button>
+                            <button
+                              onClick={() => { cancelEditSeg(); deleteSegment(seg) }}
+                              disabled={deletingSegId === seg.id}
+                              className="ml-auto px-3 py-1 text-red-500 border border-red-200 rounded-full text-[12px] font-semibold hover:bg-red-50 disabled:opacity-60 transition-colors"
+                            >
+                              {deletingSegId === seg.id ? '삭제 중…' : '이 행 삭제'}
+                            </button>
                           </div>
                         </div>
                       ) : (
@@ -740,6 +761,14 @@ export default function SessionDetailPage() {
                             className="opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 flex items-center justify-center rounded-md text-ink-400 hover:bg-ink-100 flex-shrink-0 mt-0.5"
                           >
                             <Icon name="edit" size={13} />
+                          </button>
+                          <button
+                            onClick={() => deleteSegment(seg)}
+                            disabled={deletingSegId === seg.id}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 flex items-center justify-center rounded-md text-red-400 hover:bg-red-50 flex-shrink-0 mt-0.5 disabled:opacity-60"
+                            title="이 행 삭제"
+                          >
+                            <Icon name="trash" size={13} />
                           </button>
                         </>
                       )}
