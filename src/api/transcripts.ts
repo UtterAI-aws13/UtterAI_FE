@@ -76,4 +76,8 @@ export const transcriptsApi = {
   // PATCH /transcripts/{transcript_id}/segments (bulk)
   bulkUpdateSegments: (transcriptId: string, segments: BulkUpdateSegmentItem[]) =>
     apiClient.patch<TranscriptSegment[]>(`/transcripts/${transcriptId}/segments`, { segments }),
+
+  // DELETE /transcripts/{transcript_id}/segments/{segment_id}
+  deleteSegment: (transcriptId: string, segmentId: string) =>
+    apiClient.delete(`/transcripts/${transcriptId}/segments/${segmentId}`),
 }
