@@ -4,7 +4,7 @@ import { sessionsApi, type Session, type SessionStatus } from '@/api/sessions'
 import { patientsApi, type Patient } from '@/api/patients'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Icon } from '@/components/common/Icon'
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, maskName } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 
 const STATUS_FILTERS: Array<{ label: string; value: SessionStatus | 'all' }> = [
@@ -134,7 +134,7 @@ export default function SessionsPage() {
                           <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[13px] font-bold">
                             {patient ? patient.name[0] : '?'}
                           </div>
-                          <p className="font-semibold text-ink-800">{patient?.name ?? s.patient_ref_id.slice(-8)}</p>
+                          <p className="font-semibold text-ink-800">{patient ? maskName(patient.name) : s.patient_ref_id.slice(-8)}</p>
                         </div>
                       </td>
                       <td className="px-5 py-3 font-mono-num text-ink-500">{formatDate(s.session_date)}</td>

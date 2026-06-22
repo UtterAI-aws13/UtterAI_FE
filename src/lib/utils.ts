@@ -38,3 +38,10 @@ export function formatMs(ms: number | null | undefined): string {
   const s = String(totalSec % 60).padStart(2, '0')
   return `${m}:${s}`
 }
+
+export function maskName(name: string): string {
+  const chars = [...name]
+  if (chars.length <= 1) return name
+  if (chars.length === 2) return chars[0] + '*'
+  return chars[0] + '*'.repeat(chars.length - 2) + chars[chars.length - 1]
+}
