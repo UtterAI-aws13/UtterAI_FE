@@ -31,7 +31,7 @@ export default function SessionsPage() {
         if (ignore) return
         setSessions(sessRes.data)
         const map: Record<string, Patient> = {}
-        patientRes.data.forEach((p) => { map[p.id] = p })
+        patientRes.data.forEach((p) => { map[p.patient_ref_id] = p })
         setPatientMap(map)
       })
       .catch(() => { if (!ignore) showToast({ title: '세션 목록을 불러오지 못했습니다', kind: 'error' }) })

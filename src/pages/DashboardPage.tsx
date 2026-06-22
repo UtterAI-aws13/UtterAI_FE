@@ -36,7 +36,7 @@ export default function DashboardPage() {
         setSessions(sess)
         setPatients(pats)
         const map: Record<string, Patient> = {}
-        pats.forEach((p) => { map[p.id] = p })
+        pats.forEach((p) => { map[p.patient_ref_id] = p })
         setPatientMap(map)
       })
       .catch(() => showToast({ title: '데이터를 불러오지 못했습니다', kind: 'error' }))
