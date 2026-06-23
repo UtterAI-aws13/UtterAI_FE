@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { reportsApi, type Report, type ReportStatus } from '@/api/reports'
+import { sessionsApi } from '@/api/sessions'
+import { patientsApi } from '@/api/patients'
 import { Icon } from '@/components/common/Icon'
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, maskName } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 
 const STATUS_LABEL: Record<ReportStatus, { label: string; cls: string }> = {
@@ -17,14 +19,34 @@ export default function ReportsPage() {
   const navigate = useNavigate()
   const { showToast } = useToast()
   const [reports, setReports] = useState<Report[]>([])
+  const [patientNames, setPatientNames] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let ignore = false
-    reportsApi.list()
-      .then(({ data }) => { if (!ignore) setReports(data) })
-      .catch(() => { if (!ignore) showToast({ title: '리포트 목록을 불러오지 못했습니다', kind: 'error' }) })
-      .finally(() => { if (!ignore) setLoading(false) })
+    const load = async () => {
+      try {
+        const [{ data: reports }, { data: sessions }, { data: patients }] = await Promise.all([
+          reportsApi.list(),
+          sessionsApi.list(),
+          patientsApi.list(),
+        ])
+        if (ignore) return
+        const refToName: Record<string, string> = {}
+        for (const p of patients) refToName[p.patient_ref_id] = p.name
+        const sessionToName: Record<string, string> = {}
+        for (const s of sessions) {
+          if (refToName[s.patient_ref_id]) sessionToName[s.id] = refToName[s.patient_ref_id]
+        }
+        setReports(reports)
+        setPatientNames(sessionToName)
+      } catch {
+        if (!ignore) showToast({ title: '리포트 목록을 불러오지 못했습니다', kind: 'error' })
+      } finally {
+        if (!ignore) setLoading(false)
+      }
+    }
+    load()
     return () => { ignore = true }
   }, [])
 
@@ -62,7 +84,7 @@ export default function ReportsPage() {
             <table className="w-full text-[13px] border-collapse">
               <thead>
                 <tr className="bg-ink-50 border-b border-ink-100">
-                  {['세션', '모델', '상태', '생성일', ''].map((h, i) => (
+                  {['세션', '환자', '상태', '생성일', ''].map((h, i) => (
                     <th key={i} className={cn(
                       'py-2.5 px-5 text-[11px] font-semibold text-ink-500 uppercase tracking-wider',
                       i >= 4 ? 'text-right' : 'text-left',
@@ -79,7 +101,7 @@ export default function ReportsPage() {
                         {r.session_id.slice(-8)}
                       </td>
                       <td className="px-5 py-3 text-ink-500 text-[12px]">
-                        {r.model_used ?? '—'}
+                        {maskName(patientNames[r.session_id] ?? '')}
                       </td>
                       <td className="px-5 py-3">
                         <span className={cn('inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold', statusInfo.cls)}>
