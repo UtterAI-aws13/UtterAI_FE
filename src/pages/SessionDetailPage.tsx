@@ -616,7 +616,7 @@ export default function SessionDetailPage() {
                     style={{ animation: 'spin 1s linear infinite' }} />
                   <p className="font-semibold text-ink-800">음성을 분석하고 있습니다</p>
                   <p className="text-[12px] text-ink-500 mt-1">
-                    {analysisJob?.pipeline_stage ? `현재 단계: ${analysisJob.pipeline_stage}` : '평균 2–3분 소요됩니다'}
+                    {analysisJob?.pipeline_stage ? `현재 단계: ${analysisJob.pipeline_stage}` : '작업 완료 이후 알림을 보내드립니다'}
                   </p>
                   <p className="text-[11px] text-ink-400 mt-4">페이지를 벗어나도 분석은 계속됩니다.</p>
                   {analysisJob && ['PENDING', 'DOWNLOADING', 'RETRYING'].includes(analysisJob.status) && (
@@ -641,7 +641,7 @@ export default function SessionDetailPage() {
               <div className="flex flex-col items-center justify-center py-16 gap-4">
                 <div className="w-8 h-8 rounded-full border-2 border-brand-200 border-t-brand-600 animate-spin" />
                 <p className="text-[14px] font-semibold text-ink-700">리포트를 생성하고 있습니다</p>
-                <p className="text-[12px] text-ink-400">페이지를 벗어나도 계속됩니다.</p>
+                <p className="text-[12px] text-ink-400">작업 완료 이후 알림을 보내드립니다.</p>
               </div>
             ) : (<>
             <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100">
