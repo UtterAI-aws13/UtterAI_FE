@@ -6,6 +6,7 @@ import { audioApi } from '@/api/audio'
 import { analysisApi, type AnalysisJob } from '@/api/analysis'
 import { transcriptsApi, type Transcript, type TranscriptSegment, type SpeakerRole } from '@/api/transcripts'
 import { reportsApi, type Report, type ReportSegment, type ReportSegmentType } from '@/api/reports'
+import { templatesApi, type Template } from '@/api/templates'
 import { Icon } from '@/components/common/Icon'
 import { useToast } from '@/hooks/useToast'
 import { cn, formatDate, formatMs } from '@/lib/utils'
@@ -55,6 +56,9 @@ export default function SessionDetailPage() {
   const [uploadStep, setUploadStep] = useState('')
   const fileInputRef                = useRef<HTMLInputElement>(null)
 
+  const [templates, setTemplates]         = useState<Template[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
+
   const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null)
   const pollRef                       = useRef<ReturnType<typeof setInterval> | null>(null)
   const [cancelling, setCancelling]   = useState(false)
@@ -88,6 +92,12 @@ export default function SessionDetailPage() {
     setStep(statusToStep(data.status))
     return data
   }, [id])
+
+  useEffect(() => {
+    templatesApi.list()
+      .then(({ data }) => setTemplates(data.filter((t) => t.status === 'ACTIVE')))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!id) return
@@ -240,7 +250,11 @@ export default function SessionDetailPage() {
       setUploadStep('업로드 확인 중…')
       const { data: audioFile } = await audioApi.complete({ session_id: id, object_key: presigned.object_key })
       setUploadStep('AI 분석 요청 중…')
-      const { data: job } = await analysisApi.create({ session_id: id, audio_file_id: audioFile.id })
+      const { data: job } = await analysisApi.create({
+        session_id: id,
+        audio_file_id: audioFile.id,
+        ...(selectedTemplateId ? { template_id: selectedTemplateId } : {}),
+      })
       setAnalysisJob(job)
       setTranscript(null)
       setSegments([])
@@ -276,7 +290,12 @@ export default function SessionDetailPage() {
   const handleRequestAnalysis = async () => {
     if (!id || !analysisJob) return
     try {
-      const { data: job } = await analysisApi.create({ session_id: id, audio_file_id: analysisJob.audio_file_id })
+      const templateIdToUse = selectedTemplateId || analysisJob.template_id || undefined
+      const { data: job } = await analysisApi.create({
+        session_id: id,
+        audio_file_id: analysisJob.audio_file_id,
+        ...(templateIdToUse ? { template_id: templateIdToUse } : {}),
+      })
       setAnalysisJob(job)
       setTranscript(null)
       setSegments([])
@@ -534,7 +553,24 @@ export default function SessionDetailPage() {
             <div className="px-6 py-4 border-b border-ink-100">
               <p className="text-[16px] font-semibold text-ink-800">음성 파일 업로드</p>
             </div>
-            <div className="p-6">
+            <div className="p-6 flex flex-col gap-4">
+              {templates.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[13px] font-semibold text-ink-700">리포트 템플릿 선택</label>
+                  <select
+                    value={selectedTemplateId}
+                    onChange={(e) => setSelectedTemplateId(e.target.value)}
+                    disabled={uploading}
+                    className="w-full border border-ink-200 rounded-lg px-3 py-2 text-[13px] text-ink-700 bg-white outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/16 disabled:opacity-60"
+                  >
+                    <option value="">기본 SOAP Note</option>
+                    {templates.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-ink-400">선택한 템플릿 구조에 맞춰 리포트가 생성됩니다.</p>
+                </div>
+              )}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -602,12 +638,26 @@ export default function SessionDetailPage() {
                   <p className="font-semibold text-ink-800">분석이 취소되었습니다</p>
                   <p className="text-[12px] text-ink-500 mt-1">분석을 다시 요청할 수 있습니다.</p>
                   {analysisJob && (
-                    <button
-                      onClick={handleRequestAnalysis}
-                      className="mt-4 px-4 py-1.5 bg-brand-600 text-white rounded-full text-[12px] font-semibold hover:bg-brand-700 transition-colors"
-                    >
-                      다시 분석 요청
-                    </button>
+                    <div className="mt-4 flex flex-col items-center gap-2">
+                      {templates.length > 0 && (
+                        <select
+                          value={selectedTemplateId || analysisJob.template_id || ''}
+                          onChange={(e) => setSelectedTemplateId(e.target.value)}
+                          className="border border-ink-200 rounded-lg px-3 py-1.5 text-[12px] text-ink-700 bg-white outline-none focus:border-brand-500"
+                        >
+                          <option value="">기본 SOAP Note</option>
+                          {templates.map((t) => (
+                            <option key={t.id} value={t.id}>{t.name}</option>
+                          ))}
+                        </select>
+                      )}
+                      <button
+                        onClick={handleRequestAnalysis}
+                        className="px-4 py-1.5 bg-brand-600 text-white rounded-full text-[12px] font-semibold hover:bg-brand-700 transition-colors"
+                      >
+                        다시 분석 요청
+                      </button>
+                    </div>
                   )}
                 </>
               ) : (
