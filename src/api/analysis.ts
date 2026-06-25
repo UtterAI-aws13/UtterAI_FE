@@ -21,6 +21,7 @@ export interface AnalysisJob {
   id: string
   session_id: string
   audio_file_id: string
+  template_id: string | null
   status: AnalysisJobStatus
   pipeline_stage: string | null
   error_code: string | null

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { sessionsApi, type Session } from '@/api/sessions'
+import { sessionsApi, type Session, type SessionStatus } from '@/api/sessions'
 import { patientsApi, type Patient } from '@/api/patients'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Icon } from '@/components/common/Icon'
 import { useAuthStore } from '@/store/authStore'
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, maskName } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 
 function StatCard({ label, value, delta, tone }: { label: string; value: number; delta: string; tone: 'pos' | 'neutral' }) {
@@ -36,7 +36,7 @@ export default function DashboardPage() {
         setSessions(sess)
         setPatients(pats)
         const map: Record<string, Patient> = {}
-        pats.forEach((p) => { map[p.id] = p })
+        pats.forEach((p) => { map[p.patient_ref_id] = p })
         setPatientMap(map)
       })
       .catch(() => showToast({ title: '데이터를 불러오지 못했습니다', kind: 'error' }))
@@ -48,7 +48,8 @@ export default function DashboardPage() {
     const d = new Date(s.created_at)
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
   })
-  const processingCount = sessions.filter((s) => s.status === 'ANALYSIS_PROCESSING').length
+  const IN_PROGRESS_STATUSES: SessionStatus[] = ['ANALYSIS_REQUESTED', 'ANALYSIS_PROCESSING', 'REPORT_GENERATING']
+  const processingCount = sessions.filter((s) => IN_PROGRESS_STATUSES.includes(s.status)).length
   const recentSessions = [...sessions]
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .slice(0, 5)
@@ -125,7 +126,7 @@ export default function DashboardPage() {
                           <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[13px] font-bold">
                             {patient ? patient.name[0] : '?'}
                           </div>
-                          <p className="font-semibold text-ink-800">{patient?.name ?? '—'}</p>
+                          <p className="font-semibold text-ink-800">{patient ? maskName(patient.name) : '—'}</p>
                         </div>
                       </td>
                       <td className="px-5 py-3 font-mono-num text-ink-500">{formatDate(s.session_date)}</td>
