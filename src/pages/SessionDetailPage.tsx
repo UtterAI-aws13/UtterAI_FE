@@ -72,6 +72,7 @@ export default function SessionDetailPage() {
   const [editRole, setEditRole]         = useState<SpeakerRole>('UNKNOWN')
   const [savingSeg, setSavingSeg]       = useState(false)
   const [deletingSegId, setDeletingSegId]   = useState<string | null>(null)
+  const [insertingAfterSegId, setInsertingAfterSegId] = useState<string | null>(null)
   const [speakerRoleMap, setSpeakerRoleMap] = useState<Record<string, SpeakerRole>>({})
   const [applyingBulk, setApplyingBulk]    = useState(false)
 
@@ -354,6 +355,27 @@ export default function SessionDetailPage() {
   }
 
   const cancelEditSeg = () => setEditingSegId(null)
+
+  const insertSegmentAfter = async (seg: TranscriptSegment) => {
+    if (!transcript) return
+    setInsertingAfterSegId(seg.id)
+    try {
+      const { data } = await transcriptsApi.createSegment(transcript.id, { after_segment_id: seg.id })
+      setSegments((prev) => {
+        const idx = prev.findIndex((s) => s.id === seg.id)
+        const next = [...prev]
+        next.splice(idx + 1, 0, data)
+        return next
+      })
+      setEditingSegId(data.id)
+      setEditText('')
+      setEditRole('UNKNOWN')
+    } catch {
+      showToast({ title: '삽입에 실패했습니다', kind: 'error' })
+    } finally {
+      setInsertingAfterSegId(null)
+    }
+  }
 
   const deleteSegment = async (seg: TranscriptSegment) => {
     if (!transcript) return
@@ -809,8 +831,17 @@ export default function SessionDetailPage() {
                           <button
                             onClick={() => startEditSeg(seg)}
                             className="opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 flex items-center justify-center rounded-md text-ink-400 hover:bg-ink-100 flex-shrink-0 mt-0.5"
+                            title="수정"
                           >
                             <Icon name="edit" size={13} />
+                          </button>
+                          <button
+                            onClick={() => insertSegmentAfter(seg)}
+                            disabled={insertingAfterSegId === seg.id}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 flex items-center justify-center rounded-md text-ink-400 hover:bg-ink-100 flex-shrink-0 mt-0.5 disabled:opacity-60"
+                            title="아래에 행 삽입"
+                          >
+                            <Icon name="plus" size={13} />
                           </button>
                           <button
                             onClick={() => deleteSegment(seg)}

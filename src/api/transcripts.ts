@@ -40,6 +40,11 @@ export interface UpdateSegmentPayload {
   speaker_role?: SpeakerRole | null
 }
 
+export interface CreateSegmentPayload {
+  after_segment_id: string
+  text?: string | null
+}
+
 export interface BulkUpdateSegmentItem {
   segment_id: string
   text?: string | null
@@ -76,6 +81,10 @@ export const transcriptsApi = {
   // PATCH /transcripts/{transcript_id}/segments (bulk)
   bulkUpdateSegments: (transcriptId: string, segments: BulkUpdateSegmentItem[]) =>
     apiClient.patch<TranscriptSegment[]>(`/transcripts/${transcriptId}/segments`, { segments }),
+
+  // POST /transcripts/{transcript_id}/segments
+  createSegment: (transcriptId: string, payload: CreateSegmentPayload) =>
+    apiClient.post<TranscriptSegment>(`/transcripts/${transcriptId}/segments`, payload),
 
   // DELETE /transcripts/{transcript_id}/segments/{segment_id}
   deleteSegment: (transcriptId: string, segmentId: string) =>
