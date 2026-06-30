@@ -3,7 +3,7 @@ import {
   Bell, Search, Plus, Trash2, Mail, Lock, User, ShieldCheck,
   Check, AlertCircle, Info, LogOut, ArrowLeft, Download,
   Upload, RefreshCw, Eye, EyeOff, Filter, X, Edit3,
-  ClipboardList, BarChart2, type LucideProps,
+  ClipboardList, BarChart2, SendHorizonal, type LucideProps,
 } from 'lucide-react'
 
 const icons = {
@@ -36,6 +36,7 @@ const icons = {
   x:            X,
   edit:         Edit3,
   clipboard:    ClipboardList,
+  send:         SendHorizonal,
 }
 
 type IconName = keyof typeof icons

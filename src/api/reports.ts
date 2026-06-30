@@ -16,6 +16,39 @@ export interface Report {
   s3_key: string | null
   generated_at: string | null
   updated_at: string
+  version: number
+}
+
+// ── Chat types ───────────────────────────────────────────────────────────────
+
+export interface ChatIntent {
+  intent: string
+  target_section: string | null
+  requires_patch: boolean
+}
+
+export interface PatchProposal {
+  patch_id: string
+  target_section: string
+  original_text: string
+  proposed_text: string
+  rationale: string | null
+  evidence_refs: unknown[]
+  base_report_version: number
+  status: 'PENDING' | 'APPLIED' | 'REJECTED'
+}
+
+export interface ChatMessageResponse {
+  thread_id: string
+  assistant_message: string
+  intent: ChatIntent | null
+  patch_proposal: PatchProposal | null
+}
+
+export interface PatchApplyResponse {
+  report_id: string
+  version: number
+  updated_sections: string[]
 }
 
 export interface ReportSegment {
@@ -46,4 +79,10 @@ export const reportsApi = {
     apiClient.patch<Report>(`/reports/${reportId}/status`, { status }),
 
   download: (id: string) => apiClient.get(`/reports/${id}/download`, { responseType: 'blob' }),
+
+  sendChatMessage: (reportId: string, message: string) =>
+    apiClient.post<ChatMessageResponse>(`/reports/${reportId}/chat/messages`, { message }),
+
+  applyPatch: (patchId: string) =>
+    apiClient.post<PatchApplyResponse>(`/reports/patch-proposals/${patchId}/apply`),
 }
