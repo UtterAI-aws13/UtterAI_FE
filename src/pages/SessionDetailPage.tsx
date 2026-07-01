@@ -8,6 +8,7 @@ import { transcriptsApi, type Transcript, type TranscriptSegment, type SpeakerRo
 import { reportsApi, type Report, type ReportSegment, type ReportSegmentType } from '@/api/reports'
 import { templatesApi, type Template } from '@/api/templates'
 import { Icon } from '@/components/common/Icon'
+import { ReportChatPanel } from '@/components/common/ReportChatPanel'
 import { useToast } from '@/hooks/useToast'
 import { cn, formatDate, formatMs } from '@/lib/utils'
 
@@ -418,6 +419,15 @@ export default function SessionDetailPage() {
       showToast({ title: '저장에 실패했습니다', kind: 'error' })
     } finally {
       setSavingSegment(false)
+    }
+  }
+
+  const handleReportPatchApplied = (newVersion: number, _updatedSections: string[]) => {
+    setReport((prev) => (prev ? { ...prev, version: newVersion } : prev))
+    if (report) {
+      reportsApi.listSegments(report.id)
+        .then(({ data }) => setReportSegments(data))
+        .catch(() => showToast({ title: '리포트를 다시 불러오지 못했습니다', kind: 'error' }))
     }
   }
 
@@ -913,6 +923,12 @@ export default function SessionDetailPage() {
             ) : (
               <div className="py-12 text-center text-[13px] text-ink-400">리포트를 불러오는 중…</div>
             )}
+          </div>
+        )}
+
+        {step === 4 && report && !isReportFinalized && (
+          <div className="bg-white rounded-xl border border-ink-200 shadow-sm mt-4 flex flex-col h-[520px] overflow-hidden">
+            <ReportChatPanel report={report} onPatchApplied={handleReportPatchApplied} />
           </div>
         )}
       </div>

@@ -101,7 +101,7 @@ export function ReportChatPanel({ report, onPatchApplied }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-full border-l border-ink-100">
+    <div className="flex flex-col h-full">
       {/* header */}
       <div className="px-4 py-3 border-b border-ink-100 flex-shrink-0">
         <p className="text-[13px] font-bold text-ink-800">AI 보조</p>
