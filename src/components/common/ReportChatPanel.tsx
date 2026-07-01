@@ -103,9 +103,21 @@ export function ReportChatPanel({ report, onPatchApplied }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* header */}
-      <div className="px-4 py-3 border-b border-ink-100 flex-shrink-0">
-        <p className="text-[13px] font-bold text-ink-800">AI 보조</p>
-        <p className="text-[11px] text-ink-400 mt-0.5">수정 제안을 요청하거나 근거를 확인하세요</p>
+      <div className="px-4 py-3 border-b border-ink-100 flex-shrink-0 flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[13px] font-bold text-ink-800">AI 보조</p>
+          <p className="text-[11px] text-ink-400 mt-0.5">수정 제안을 요청하거나 근거를 확인하세요</p>
+        </div>
+        <button
+          onClick={() =>
+            window.open(`/insight-map?report_id=${report.id}`, '_blank', 'noopener,noreferrer')
+          }
+          title="인사이트맵 열기"
+          className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg border border-ink-200 text-ink-500 text-[10px] font-semibold hover:bg-ink-50 transition-colors"
+        >
+          <Icon name="network" size={12} />
+          인사이트맵
+        </button>
       </div>
 
       {/* messages */}

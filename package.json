@@ -25,6 +25,7 @@
     "axios": "^1.7.7",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "d3": "^7.9.0",
     "lucide-react": "^0.453.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -36,6 +37,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/d3": "^7.4.3",
     "@types/node": "^22.8.4",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
