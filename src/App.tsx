@@ -13,6 +13,7 @@ import NewSessionPage from '@/pages/NewSessionPage'
 import ReportsPage from '@/pages/ReportsPage'
 import TemplatesPage from '@/pages/TemplatesPage'
 import SettingsPage from '@/pages/SettingsPage'
+import InsightMapPage from '@/pages/InsightMapPage'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -27,6 +28,16 @@ export default function App() {
       {/* Public */}
       <Route path="/login"  element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+
+      {/* Standalone window — no AppShell chrome, opened via window.open() */}
+      <Route
+        path="/insight-map"
+        element={
+          <RequireAuth>
+            <InsightMapPage />
+          </RequireAuth>
+        }
+      />
 
       {/* Protected — shell layout */}
       <Route

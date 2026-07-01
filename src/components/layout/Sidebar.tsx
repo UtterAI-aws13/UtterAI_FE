@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: '/sessions',  label: '세션 관리', icon: 'audio'    as const },
   { to: '/reports',   label: '리포트',   icon: 'report'   as const },
   { to: '/templates', label: '템플릿 관리', icon: 'fileText' as const },
+  { to: '/insight-map', label: '인사이트맵', icon: 'network' as const },
 ]
 
 const UtterWordmark = () => (
